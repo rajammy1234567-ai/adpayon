@@ -1,0 +1,20 @@
+{
+  "name": "adpayon-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "mobile": "npm --workspace=@adpayon/mobile start",
+    "api": "npm --workspace=@adpayon/api dev",
+    "admin": "npm --workspace=@adpayon/admin dev",
+    "build:shared": "npm run --workspace=@adpayon/shared build",
+    "lint": "npm run --workspaces lint"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
