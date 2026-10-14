@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: adpayon_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: adpayon_dev
+      POSTGRES_PASSWORD: adpayon_dev_password
+      POSTGRES_DB: adpayon_dev
+    ports:
+      # Bind only to localhost on host machine for development safety
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adpayon_dev -d adpayon_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_dev_data:
+    driver: local

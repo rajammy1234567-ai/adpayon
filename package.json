@@ -9,8 +9,12 @@
   ],
   "scripts": {
     "mobile": "npm --workspace=@adpayon/mobile start",
-    "api": "npm --workspace=@adpayon/api dev",
-    "admin": "npm --workspace=@adpayon/admin dev",
+    "api": "npm run --workspace=@adpayon/api dev",
+    "build:api": "npm run --workspace=@adpayon/api build",
+    "typecheck:api": "npm run --workspace=@adpayon/api typecheck",
+    "test:api": "npm run --workspace=@adpayon/api test",
+    "prisma:generate": "npm run --workspace=@adpayon/api prisma:generate",
+    "admin": "npm run --workspace=@adpayon/admin dev",
     "build:shared": "npm run --workspace=@adpayon/shared build",
     "lint": "npm run --workspaces lint"
   },
