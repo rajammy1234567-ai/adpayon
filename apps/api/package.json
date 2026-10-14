@@ -8,18 +8,20 @@
     "build": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json",
     "start": "node dist/src/server.js",
     "typecheck": "node ../../node_modules/typescript/lib/tsc.js --noEmit -p tsconfig.json",
-    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js",
-    "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
-    "prisma:migrate": "prisma migrate dev --schema=./prisma/schema.prisma"
+    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js",
+    "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyAtlas.js"
   },
   "dependencies": {
     "@adpayon/shared": "file:../../packages/shared",
-    "@prisma/client": "^6.4.1",
+    "argon2": "^0.45.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.1",
     "helmet": "^8.0.0",
     "iconv-lite": "^0.4.24",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.2",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "zod": "^3.24.1"
@@ -27,8 +29,8 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.13.4",
-    "prisma": "^6.4.1",
     "typescript": "^5.7.3"
   }
 }

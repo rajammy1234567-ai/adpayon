@@ -23,7 +23,7 @@ describe('Health and API Infrastructure Tests', () => {
     });
   });
 
-  it('1. GET /api/health returns HTTP 200 with service information', async () => {
+  it('1. GET /api/health returns HTTP 200 with service information (Process Liveness)', async () => {
     const res = await fetch(`${baseUrl}/api/health`);
     assert.equal(res.status, 200);
 
@@ -56,11 +56,11 @@ describe('Health and API Infrastructure Tests', () => {
     assert.ok(body.error.message.includes('Cannot GET /api/unknown-endpoint-test'));
   });
 
-  it('3. GET /api/health/db handles database state and does not leak secrets', async () => {
+  it('3. GET /api/health/db returns HTTP 503 when disconnected and never leaks secrets (Readiness Probe)', async () => {
     const res = await fetch(`${baseUrl}/api/health/db`);
 
-    // In local dev without live postgres, returns 503 degraded; with live postgres returns 200
-    assert.ok(res.status === 200 || res.status === 503);
+    // In local dev without live MongoDB Atlas connection, MUST return HTTP 503 degraded
+    assert.equal(res.status, 503);
 
     const body = (await res.json()) as {
       status: string;
@@ -69,20 +69,16 @@ describe('Health and API Infrastructure Tests', () => {
       message?: string;
     };
 
+    assert.equal(body.status, 'degraded');
     assert.equal(body.service, 'adpayon-api');
+    assert.equal(body.database, 'disconnected');
+    assert.ok(body.message?.includes('currently unreachable'));
 
-    if (res.status === 503) {
-      assert.equal(body.status, 'degraded');
-      assert.equal(body.database, 'disconnected');
-    } else {
-      assert.equal(body.status, 'ok');
-      assert.equal(body.database, 'connected');
-    }
-
-    // Critical security assertion: Ensure no credentials, ports, or raw database URLs leak
+    // Critical security assertion: Ensure no credentials, MongoDB URLs, or passwords leak
     const payload = JSON.stringify(body);
-    assert.ok(!payload.includes('5432'));
+    assert.ok(!payload.includes('mongodb'));
     assert.ok(!payload.includes('password'));
-    assert.ok(!payload.includes('DATABASE_URL'));
+    assert.ok(!payload.includes('cluster'));
+    assert.ok(!payload.includes('MONGODB_URI'));
   });
 });

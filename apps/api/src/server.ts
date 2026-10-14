@@ -1,7 +1,7 @@
 import { app } from './app';
 import { env } from './config/env';
 import { logger } from './config/logger';
-import { prisma } from './db/prisma';
+import { connectMongo, disconnectMongo } from './db/mongoose';
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
@@ -12,6 +12,15 @@ const server = app.listen(env.PORT, env.HOST, () => {
     },
     `ADPAYON API backend server listening on http://${env.HOST}:${env.PORT}`
   );
+
+  // Initialize MongoDB connection asynchronously if configured
+  if (env.MONGODB_URI) {
+    connectMongo().catch((err) => {
+      logger.error({ err }, 'Initial MongoDB connection attempt encountered error');
+    });
+  } else {
+    logger.info('No MONGODB_URI configured. API running in disconnected database mode.');
+  }
 });
 
 // Graceful Shutdown
@@ -21,8 +30,8 @@ async function gracefulShutdown(signal: string) {
   server.close(async () => {
     logger.info('HTTP server closed.');
     try {
-      await prisma.$disconnect();
-      logger.info('Prisma database connection disconnected cleanly.');
+      await disconnectMongo();
+      logger.info('MongoDB disconnected cleanly.');
       process.exit(0);
     } catch (err) {
       logger.error({ err }, 'Error during database disconnect.');
