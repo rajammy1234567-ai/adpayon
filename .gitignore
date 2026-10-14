@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+*/node_modules/
+packages/*/node_modules/
+apps/*/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Expo & React Native Caches
+.expo/
+apps/*/.expo/
+.expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Build Outputs & TypeScript Caches
+dist/
+packages/*/dist/
+apps/*/dist/
+build/
+*.tsbuildinfo
+
+# Environment & Secrets
+.env
+.env*.local
+.env.development
+.env.test
+.env.production
+*.pem
+
+# IDE & OS Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs & Diagnostics
+logs/
+*.log
