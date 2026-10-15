@@ -1,68 +1,135 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { TeamMemberNode } from '@adpayon/shared';
+import { ReferralSummaryResponse, ReferralTreeNode } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Header } from '../../components/ui/Header';
 import { THEME } from '../../constants/theme';
-import { MOCK_TEAM_TREE } from '../../services/mockData';
 import { useAuthStore } from '../../store/authStore';
+import {
+  getReferralSummaryApi,
+  getDirectReferralsApi,
+  getTreeChildrenApi,
+} from '../../services/api/referral.api';
 
 export const MyTeamScreen: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
-    usr_1001: true,
-    usr_2001: true,
-  });
 
-  const toggleNode = (nodeId: string) => {
-    setExpandedNodes((prev) => ({
-      ...prev,
-      [nodeId]: !prev[nodeId],
-    }));
+  const [summary, setSummary] = useState<ReferralSummaryResponse | null>(null);
+  const [directs, setDirects] = useState<ReferralTreeNode[]>([]);
+  const [childrenMap, setChildrenMap] = useState<Record<string, ReferralTreeNode[]>>({});
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [loadingNode, setLoadingNode] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    setError(null);
+    try {
+      const [sumRes, dirRes] = await Promise.all([
+        getReferralSummaryApi(),
+        getDirectReferralsApi(1, 50),
+      ]);
+      setSummary(sumRes.data);
+      setDirects(dirRes.data.items);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load referral network');
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
   };
 
-  const renderTreeNode = (node: TeamMemberNode, depth = 0) => {
+  const handleToggleNode = async (nodeId: string) => {
+    const isCurrentlyExpanded = !!expandedNodes[nodeId];
+
+    if (isCurrentlyExpanded) {
+      setExpandedNodes((prev) => ({ ...prev, [nodeId]: false }));
+      return;
+    }
+
+    // If children already loaded, simply expand
+    if (childrenMap[nodeId]) {
+      setExpandedNodes((prev) => ({ ...prev, [nodeId]: true }));
+      return;
+    }
+
+    // Lazy load children from backend API
+    setLoadingNode((prev) => ({ ...prev, [nodeId]: true }));
+    try {
+      const res = await getTreeChildrenApi(nodeId);
+      setChildrenMap((prev) => ({
+        ...prev,
+        [nodeId]: res.data.children,
+      }));
+      setExpandedNodes((prev) => ({ ...prev, [nodeId]: true }));
+    } catch (err: any) {
+      Alert.alert('Unable to load branch', err.message || 'Could not fetch downline members.');
+    } finally {
+      setLoadingNode((prev) => ({ ...prev, [nodeId]: false }));
+    }
+  };
+
+  const handleShare = async () => {
+    const code = summary?.referralCode || user?.referralCode || 'ADPAYON';
+    const link = `https://adpayon.com/join?ref=${code}`;
+    try {
+      await Share.share({
+        title: 'Join My AdPayOn Team',
+        message: `Join my team on AdPayOn to earn verified rewards and daily bonuses! Register with my referral code ${code}: ${link}`,
+      });
+    } catch {
+      // User dismissed share dialog
+    }
+  };
+
+  const renderMemberNode = (node: ReferralTreeNode, depth = 1) => {
     const isExpanded = !!expandedNodes[node.id];
-    const hasChildren = node.hasChildren && node.children && node.children.length > 0;
+    const isNodeLoading = !!loadingNode[node.id];
+    const children = childrenMap[node.id] || [];
 
     return (
-      <View key={node.id} style={[styles.nodeContainer, { marginLeft: depth * 14 }]}>
-        <Card
-          variant={node.id === user?.id ? 'emerald' : 'default'}
-          style={styles.nodeCard}
-        >
+      <View key={node.id} style={[styles.nodeWrapper, { marginLeft: Math.min(depth * 14, 42) }]}>
+        <Card variant="default" style={styles.nodeCard}>
           <View style={styles.nodeHeader}>
             <View style={styles.nodeHeaderLeft}>
-              <View
-                style={[
-                  styles.legIndicator,
-                  node.leg === 'LEFT'
-                    ? styles.legLeft
-                    : node.leg === 'RIGHT'
-                    ? styles.legRight
-                    : styles.legRoot,
-                ]}
-              >
-                <Text style={styles.legIndicatorText}>
-                  {node.leg ? node.leg[0] : '★'}
-                </Text>
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelBadgeText}>L{node.level}</Text>
               </View>
 
-              <View>
+              <View style={styles.nodeIdentity}>
                 <View style={styles.nameRow}>
                   <Text style={styles.nodeName}>{node.name}</Text>
-                  {node.currentRank !== 'NONE' ? (
-                    <Badge label={node.currentRank} variant="gold" style={styles.rankBadge} />
+                  {node.directReferralsCount > 0 ? (
+                    <Badge
+                      label={`${node.directReferralsCount} Directs`}
+                      variant="gold"
+                      style={styles.directsBadge}
+                    />
                   ) : null}
                 </View>
                 <Text style={styles.nodeSub}>
@@ -72,47 +139,41 @@ export const MyTeamScreen: React.FC = () => {
             </View>
 
             <Badge
-              label={node.isActive ? t('common.active') : t('common.inactive')}
+              label={node.isActive ? t('common.active') : t('common.pending')}
               variant={node.isActive ? 'active' : 'inactive'}
             />
           </View>
 
-          <View style={styles.nodeStatsRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Directs</Text>
-              <Text style={styles.statVal}>{node.directReferralsCount}</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Left Team</Text>
-              <Text style={styles.statVal}>{node.leftCount}</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Right Team</Text>
-              <Text style={styles.statVal}>{node.rightCount}</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Level</Text>
-              <Text style={styles.statVal}>L{node.level}</Text>
-            </View>
-          </View>
-
-          {hasChildren ? (
+          {/* Expand / Collapse Action */}
+          {node.hasChildren ? (
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => toggleNode(node.id)}
-              style={styles.expandToggle}
+              onPress={() => handleToggleNode(node.id)}
+              style={styles.expandBtn}
+              disabled={isNodeLoading}
             >
-              <Text style={styles.expandText}>
-                {isExpanded ? '▲ Collapse Downline' : `▼ Expand Children (${node.children?.length})`}
-              </Text>
+              {isNodeLoading ? (
+                <View style={styles.expandLoadingRow}>
+                  <ActivityIndicator size="small" color={THEME.colors.emerald} />
+                  <Text style={styles.expandText}>Loading team branch...</Text>
+                </View>
+              ) : (
+                <Text style={styles.expandText}>
+                  {isExpanded
+                    ? '▲ Collapse Team Branch'
+                    : `▼ View Downline (${node.directReferralsCount} Directs)`}
+                </Text>
+              )}
             </TouchableOpacity>
           ) : null}
         </Card>
 
-        {/* Recursive Children rendering */}
-        {hasChildren && isExpanded
-          ? node.children!.map((child) => renderTreeNode(child, depth + 1))
-          : null}
+        {/* Recursive Children Rendering */}
+        {isExpanded && children.length > 0 ? (
+          <View style={styles.childrenBranch}>
+            {children.map((child) => renderMemberNode(child, depth + 1))}
+          </View>
+        ) : null}
       </View>
     );
   };
@@ -121,63 +182,151 @@ export const MyTeamScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <Header
         title={t('team.myTeam')}
-        subtitle={t('team.treeOverview')}
+        subtitle="Unilevel Referral Network & Downline"
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Binary Leg Stats Summary Card */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={THEME.colors.emerald}
+          />
+        }
+      >
+        {/* Network Metrics Summary Card */}
         <Card variant="elevated" style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Binary Pair Volume Meter</Text>
+          <Text style={styles.summaryTitle}>Your Referral Network</Text>
+          <Text style={styles.summarySub}>
+            Unlimited-width unilevel team structure with real-time verified downline counts
+          </Text>
 
-          <View style={styles.legColumnsRow}>
-            {/* Left */}
-            <View style={[styles.legCol, styles.legColLeft]}>
-              <Text style={styles.legColHeader}>⬅️ LEFT LEG</Text>
-              <Text style={styles.legCountText}>
-                {user?.binaryStats.leftCount || 42} Active Members
+          <View style={styles.metricsRow}>
+            {/* Direct Referrals */}
+            <View style={styles.metricBox}>
+              <Text style={styles.metricVal}>
+                {summary ? summary.directCount : user?.directReferralsCount ?? 0}
               </Text>
-              <View style={styles.volumePill}>
-                <Text style={styles.volumeText}>
-                  {user?.binaryStats.leftVolumeUnits || 1420} PV
-                </Text>
-              </View>
-              <Text style={styles.carryLabel}>
-                Carry: +{user?.binaryStats.leftCarryForwardUnits || 320} PV
+              <Text style={styles.metricLabel}>Direct Team</Text>
+              <Text style={styles.metricActiveTag}>
+                {summary ? `${summary.activeDirectCount} Active` : 'Verified L1'}
               </Text>
             </View>
 
-            <View style={styles.vsCircle}>
-              <Text style={styles.vsText}>VS</Text>
-            </View>
+            <View style={styles.metricDivider} />
 
-            {/* Right */}
-            <View style={[styles.legCol, styles.legColRight]}>
-              <Text style={styles.legColHeader}>➡️ RIGHT LEG</Text>
-              <Text style={styles.legCountText}>
-                {user?.binaryStats.rightCount || 38} Active Members
+            {/* Total Downline */}
+            <View style={styles.metricBox}>
+              <Text style={[styles.metricVal, { color: THEME.colors.goldLight }]}>
+                {summary ? summary.totalDownlineCount : 0}
               </Text>
-              <View style={styles.volumePill}>
-                <Text style={styles.volumeText}>
-                  {user?.binaryStats.rightVolumeUnits || 1100} PV
-                </Text>
-              </View>
-              <Text style={styles.carryLabel}>
-                Matched: {user?.binaryStats.lifetimeMatchedVolumeUnits || 1100} PV
+              <Text style={styles.metricLabel}>Total Downline</Text>
+              <Text style={styles.metricActiveTag}>
+                {summary ? `${summary.activeDownlineCount} Active` : 'All Levels'}
               </Text>
             </View>
           </View>
+
+          {/* Sponsor attribution if present */}
+          {summary?.sponsor ? (
+            <View style={styles.sponsorBanner}>
+              <Text style={styles.sponsorEmoji}>🤝</Text>
+              <View style={styles.sponsorInfo}>
+                <Text style={styles.sponsorLabel}>Your Sponsor:</Text>
+                <Text style={styles.sponsorName}>
+                  {summary.sponsor.name} ({summary.sponsor.referralCode})
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* Quick Share Bar */}
+          <View style={styles.shareRow}>
+            <View style={styles.codeContainer}>
+              <Text style={styles.codePrefix}>Your Code:</Text>
+              <Text style={styles.codeText}>
+                {summary?.referralCode || user?.referralCode || 'ADP1000'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleShare}
+              style={styles.inviteBtn}
+            >
+              <Text style={styles.inviteBtnText}>📢 Share Invite</Text>
+            </TouchableOpacity>
+          </View>
         </Card>
 
-        {/* Tree Header */}
+        {/* Hierarchy Section */}
         <View style={styles.treeSectionHeader}>
-          <Text style={styles.treeTitle}>8-Level Hierarchy Visualizer</Text>
+          <Text style={styles.treeTitle}>Team Hierarchy Tree</Text>
           <Text style={styles.treeSub}>
-            Tap any node to view descendants and leg branches
+            Tap any branch to expand direct and indirect downline members
           </Text>
         </View>
 
-        {/* Render Root and Recursive Tree */}
-        {renderTreeNode(MOCK_TEAM_TREE, 0)}
+        {/* Current User Root Node */}
+        <Card variant="emerald" style={styles.rootNodeCard}>
+          <View style={styles.nodeHeader}>
+            <View style={styles.nodeHeaderLeft}>
+              <View style={styles.rootIconBox}>
+                <Text style={styles.rootIcon}>👑</Text>
+              </View>
+              <View>
+                <View style={styles.nameRow}>
+                  <Text style={styles.rootNodeName}>{user?.name || 'You'}</Text>
+                  <Badge label="You (Root)" variant="gold" style={styles.directsBadge} />
+                </View>
+                <Text style={styles.rootNodeSub}>
+                  Referral ID: {summary?.referralCode || user?.referralCode}
+                </Text>
+              </View>
+            </View>
+            <Badge label="Active" variant="active" />
+          </View>
+        </Card>
+
+        {/* Loading Spinner */}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={THEME.colors.emerald} />
+            <Text style={styles.loadingText}>Loading referral genealogy...</Text>
+          </View>
+        ) : error ? (
+          <Card variant="default" style={styles.errorCard}>
+            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <Button
+              title="Try Again"
+              onPress={loadData}
+              variant="secondary"
+              size="sm"
+              style={styles.retryBtn}
+            />
+          </Card>
+        ) : directs.length === 0 ? (
+          /* Empty State */
+          <Card variant="default" style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>🌱</Text>
+            <Text style={styles.emptyTitle}>Build Your Team Network</Text>
+            <Text style={styles.emptySub}>
+              You don't have any direct referrals yet. Share your unique referral code with friends and colleagues to start growing your team!
+            </Text>
+            <Button
+              title="Share Referral Code"
+              onPress={handleShare}
+              variant="primary"
+              size="md"
+              style={styles.emptyBtn}
+            />
+          </Card>
+        ) : (
+          /* Direct Referrals & Expandable Branches */
+          <View style={styles.treeList}>
+            {directs.map((child) => renderMemberNode(child, 1))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -193,82 +342,119 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   summaryCard: {
+    marginBottom: THEME.spacing.xl,
     padding: THEME.spacing.lg,
-    marginBottom: 20,
   },
   summaryTitle: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
-    marginBottom: 12,
   },
-  legColumnsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  legCol: {
-    flex: 1,
-    backgroundColor: THEME.colors.surfaceSubtle,
-    padding: 12,
-    borderRadius: THEME.borderRadius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  legColLeft: {
-    borderColor: THEME.colors.cyanGlow,
-  },
-  legColRight: {
-    borderColor: THEME.colors.goldGlow,
-  },
-  legColHeader: {
-    fontSize: 11,
-    fontWeight: '800',
+  summarySub: {
+    fontSize: 12,
     color: THEME.colors.textSecondary,
-    marginBottom: 4,
+    marginTop: 4,
+    marginBottom: 16,
+    lineHeight: 16,
   },
-  legCountText: {
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.surfaceSubtle,
+    borderRadius: THEME.borderRadius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  metricBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  metricVal: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: THEME.colors.emerald,
+  },
+  metricLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginTop: 2,
+  },
+  metricActiveTag: {
     fontSize: 11,
     color: THEME.colors.textMuted,
-    marginBottom: 8,
+    marginTop: 2,
   },
-  volumePill: {
-    backgroundColor: THEME.colors.surfaceElevated,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: THEME.borderRadius.full,
+  metricDivider: {
+    width: 1,
+    height: 44,
+    backgroundColor: THEME.colors.borderSubtle,
+  },
+  sponsorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
+    padding: 10,
+    borderRadius: THEME.borderRadius.sm,
     borderWidth: 1,
-    borderColor: THEME.colors.border,
+    borderColor: THEME.colors.borderSubtle,
+    marginBottom: 14,
   },
-  volumeText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: THEME.colors.textPrimary,
+  sponsorEmoji: {
+    fontSize: 20,
+    marginRight: 10,
   },
-  carryLabel: {
+  sponsorInfo: {
+    flex: 1,
+  },
+  sponsorLabel: {
     fontSize: 10,
-    color: THEME.colors.emerald,
-    marginTop: 6,
+    textTransform: 'uppercase',
+    color: THEME.colors.textMuted,
     fontWeight: '700',
   },
-  vsCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: THEME.colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 8,
+  sponsorName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
   },
-  vsText: {
-    fontSize: 11,
+  shareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: THEME.colors.surfaceSubtle,
+    padding: 10,
+    borderRadius: THEME.borderRadius.md,
+  },
+  codeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  codePrefix: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    marginRight: 6,
+  },
+  codeText: {
+    fontSize: 15,
     fontWeight: '900',
-    color: THEME.colors.textMuted,
+    color: THEME.colors.emerald,
+    letterSpacing: 0.5,
+  },
+  inviteBtn: {
+    backgroundColor: THEME.colors.emerald,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: THEME.borderRadius.sm,
+  },
+  inviteBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#000000',
   },
   treeSectionHeader: {
-    marginBottom: 14,
+    marginBottom: 12,
   },
   treeTitle: {
     fontSize: 16,
@@ -280,52 +466,75 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     marginTop: 2,
   },
-  nodeContainer: {
+  rootNodeCard: {
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.emerald,
+  },
+  rootIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: THEME.colors.emeraldGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  rootIcon: {
+    fontSize: 18,
+  },
+  rootNodeName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  rootNodeSub: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  treeList: {
+    marginTop: 4,
+  },
+  nodeWrapper: {
     marginBottom: 10,
   },
   nodeCard: {
-    padding: 12,
+    padding: THEME.spacing.md,
   },
   nodeHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
   },
   nodeHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  legIndicator: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+  levelBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: THEME.colors.surfaceSubtle,
     borderWidth: 1,
+    borderColor: THEME.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
-  legLeft: {
-    backgroundColor: THEME.colors.cyanGlow,
-    borderColor: THEME.colors.cyan,
+  levelBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.emerald,
   },
-  legRight: {
-    backgroundColor: THEME.colors.goldGlow,
-    borderColor: THEME.colors.gold,
-  },
-  legRoot: {
-    backgroundColor: THEME.colors.emeraldGlow,
-    borderColor: THEME.colors.emerald,
-  },
-  legIndicatorText: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: THEME.colors.textPrimary,
+  nodeIdentity: {
+    flex: 1,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
   },
   nodeName: {
@@ -333,44 +542,81 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.textPrimary,
   },
-  rankBadge: {
+  directsBadge: {
     paddingHorizontal: 6,
     paddingVertical: 1,
   },
   nodeSub: {
     fontSize: 11,
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     marginTop: 2,
   },
-  nodeStatsRow: {
-    flexDirection: 'row',
-    backgroundColor: THEME.colors.surfaceSubtle,
-    borderRadius: THEME.borderRadius.sm,
-    padding: 8,
-    justifyContent: 'space-between',
-  },
-  statBox: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 10,
-    color: THEME.colors.textMuted,
-    fontWeight: '600',
-  },
-  statVal: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: THEME.colors.textPrimary,
-    marginTop: 2,
-  },
-  expandToggle: {
+  expandBtn: {
     marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.borderSubtle,
     alignItems: 'center',
-    paddingVertical: 4,
+  },
+  expandLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   expandText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: THEME.colors.emerald,
+  },
+  childrenBranch: {
+    borderLeftWidth: 1.5,
+    borderLeftColor: THEME.colors.borderSubtle,
+    paddingLeft: 6,
+    marginTop: 6,
+  },
+  loadingContainer: {
+    padding: 30,
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 13,
+    marginTop: 10,
+  },
+  errorCard: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: THEME.colors.danger,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    marginTop: 12,
+  },
+  emptyCard: {
+    padding: 28,
+    alignItems: 'center',
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: 6,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  emptyBtn: {
+    width: '100%',
   },
 });

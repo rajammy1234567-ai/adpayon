@@ -1,31 +1,38 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { Server } from 'node:http';
+import mongoose from 'mongoose';
 import { app } from '../src/app';
-import { connectMongo, disconnectMongo } from '../src/db/mongoose';
 import { User, AuthSession, OTPChallenge, AuthSecurityEvent } from '../src/models';
 import { DevOtpProvider } from '../src/services/sms/devOtpProvider';
+import { assertTestDatabaseIsolation, TestOwnershipTracker } from '../src/testUtils/dbIsolation';
 
 describe('Authentication & Session Management Integration Tests', () => {
   let server: Server;
   let baseUrl: string;
+  let isSuiteBlocked = false;
+  let blockReason = '';
 
-  const TEST_PREFIX = '+91999999';
+  const tracker = new TestOwnershipTracker();
+
+  // Distinct synthetic phone numbers dedicated exclusively to this test run
+  const runId = Math.floor(10000 + Math.random() * 90000);
+  const TEST_PREFIX = `+918${runId}`;
   const testMobile1 = `${TEST_PREFIX}1111`;
   const testMobile2 = `${TEST_PREFIX}2222`;
   const testPassword = 'Password@123456';
 
   before(async () => {
-    // 1. Establish database connection for test lifecycle
-    await connectMongo();
+    // 1. Strict Isolation Check: Must connect to disposable test database, NEVER adpayon_dev
+    const isolation = await assertTestDatabaseIsolation();
+    if (!isolation.allowed) {
+      isSuiteBlocked = true;
+      blockReason = isolation.reason || 'Database isolation not configured';
+      console.warn(`\n[BLOCKED INTEGRATION TEST] Auth Suite: ${blockReason}\n`);
+      return;
+    }
 
-    // 2. Clean previous test-specific synthetic records
-    await User.deleteMany({ mobile: { $regex: '^\\+91999999' } });
-    await AuthSession.deleteMany({});
-    await OTPChallenge.deleteMany({ mobile: { $regex: '^\\+91999999' } });
-    await AuthSecurityEvent.deleteMany({ mobile: { $regex: '^\\+91999999' } });
-
-    // 3. Start ephemeral HTTP server on dynamic port
+    // 2. Start ephemeral HTTP server only if test database isolation is guaranteed
     await new Promise<void>((resolve) => {
       server = app.listen(0, '127.0.0.1', () => {
         const address = server.address() as { port: number };
@@ -36,24 +43,33 @@ describe('Authentication & Session Management Integration Tests', () => {
   });
 
   after(async () => {
-    // 1. Cleanup only test-owned records
-    await User.deleteMany({ mobile: { $regex: '^\\+91999999' } });
-    await AuthSession.deleteMany({});
-    await OTPChallenge.deleteMany({ mobile: { $regex: '^\\+91999999' } });
-    await AuthSecurityEvent.deleteMany({ mobile: { $regex: '^\\+91999999' } });
+    if (isSuiteBlocked) {
+      return;
+    }
 
-    // 2. Close HTTP server and database
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    await disconnectMongo();
+    // Purge ONLY tracked test-owned documents via exact IDs; NEVER broad regexes or dropDatabase
+    await tracker.safeCleanup();
+
+    if (server) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
   });
 
-  it('1. POST /api/auth/register creates user in PENDING_VERIFICATION and issues no JWT', async () => {
+  it('1. POST /api/auth/register creates user in PENDING_VERIFICATION and issues no JWT', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Candidate',
-        mobile: '9999991111',
+        mobile: testMobile1.replace('+91', ''),
         password: testPassword,
         acceptTerms: true,
       }),
@@ -69,13 +85,19 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.data.accessToken, undefined);
     assert.equal(body.data.tokens, undefined);
 
-    // Verify database record
+    // Track test-owned record
     const userInDb = await User.findOne({ mobile: testMobile1 });
     assert.ok(userInDb);
     assert.equal(userInDb.status, 'PENDING_VERIFICATION');
+    tracker.trackUser(userInDb._id, testMobile1);
   });
 
-  it('2. POST /api/auth/register rejects duplicate mobile number (HTTP 409)', async () => {
+  it('2. POST /api/auth/register rejects duplicate mobile number (HTTP 409)', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     // First, activate the user so it's a conflict
     await User.updateOne({ mobile: testMobile1 }, { $set: { status: 'ACTIVE' } });
 
@@ -84,7 +106,7 @@ describe('Authentication & Session Management Integration Tests', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Duplicate Candidate',
-        mobile: '9999991111',
+        mobile: testMobile1.replace('+91', ''),
         password: testPassword,
         acceptTerms: true,
       }),
@@ -96,13 +118,18 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.error.code, 'MOBILE_EXISTS');
   });
 
-  it('3. POST /api/auth/register rejects invalid sponsor referral code (HTTP 400)', async () => {
+  it('3. POST /api/auth/register rejects invalid sponsor referral code (HTTP 400)', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Sponsor Test',
-        mobile: '9999992222',
+        mobile: testMobile2.replace('+91', ''),
         password: testPassword,
         sponsorReferralCode: 'NON_EXISTENT_REF_999',
         acceptTerms: true,
@@ -115,18 +142,28 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.error.code, 'INVALID_SPONSOR');
   });
 
-  it('4. Dev OTP provider issues test OTP and allows loopback retrieval via GET /api/dev/otp/:mobile', async () => {
+  it('4. Dev OTP provider issues test OTP and allows loopback retrieval via GET /api/dev/otp/:mobile', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     // Re-register testMobile2
     await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'OTP User',
-        mobile: '9999992222',
+        mobile: testMobile2.replace('+91', ''),
         password: testPassword,
         acceptTerms: true,
       }),
     });
+
+    const userInDb = await User.findOne({ mobile: testMobile2 });
+    if (userInDb) {
+      tracker.trackUser(userInDb._id, testMobile2);
+    }
 
     // Query loopback dev OTP endpoint
     const res = await fetch(`${baseUrl}/api/dev/otp/${testMobile2}`);
@@ -139,7 +176,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.otp.length, 6);
   });
 
-  it('5. POST /api/auth/otp/verify rejects invalid OTP with attempt tracking', async () => {
+  it('5. POST /api/auth/otp/verify rejects invalid OTP with attempt tracking', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/otp/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -160,7 +202,12 @@ describe('Authentication & Session Management Integration Tests', () => {
   let validAccessToken: string;
   let validRefreshToken: string;
 
-  it('6. POST /api/auth/otp/verify with valid OTP activates account and issues JWT + Refresh tokens', async () => {
+  it('6. POST /api/auth/otp/verify with valid OTP activates account and issues JWT + Refresh tokens', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const devOtp = DevOtpProvider.getActiveDevOtp(testMobile2);
     assert.ok(devOtp);
 
@@ -189,7 +236,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(userInDb?.status, 'ACTIVE');
   });
 
-  it('7. Single-use replay protection: Reusing verified OTP is rejected (HTTP 400)', async () => {
+  it('7. Single-use replay protection: Reusing verified OTP is rejected (HTTP 400)', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const devOtp = DevOtpProvider.getActiveDevOtp(testMobile2);
 
     const res = await fetch(`${baseUrl}/api/auth/otp/verify`, {
@@ -207,7 +259,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.success, false);
   });
 
-  it('8. POST /api/auth/login rejects incorrect password (HTTP 401)', async () => {
+  it('8. POST /api/auth/login rejects incorrect password (HTTP 401)', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -223,7 +280,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.error.code, 'INVALID_CREDENTIALS');
   });
 
-  it('9. POST /api/auth/login succeeds with correct password and returns tokens', async () => {
+  it('9. POST /api/auth/login succeeds with correct password and returns tokens', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -245,7 +307,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     validRefreshToken = body.data.tokens.refreshToken;
   });
 
-  it('10. GET /api/auth/me returns sanitized user profile without passwordHash', async () => {
+  it('10. GET /api/auth/me returns sanitized user profile without passwordHash', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/me`, {
       headers: { Authorization: `Bearer ${validAccessToken}` },
     });
@@ -259,7 +326,12 @@ describe('Authentication & Session Management Integration Tests', () => {
 
   let secondRefreshToken: string;
 
-  it('11. POST /api/auth/refresh rotates refresh token and returns new token pair', async () => {
+  it('11. POST /api/auth/refresh rotates refresh token and returns new token pair', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -278,7 +350,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     secondRefreshToken = body.data.tokens.refreshToken;
   });
 
-  it('12. Token reuse detection: Presenting already-rotated refresh token revokes entire family', async () => {
+  it('12. Token reuse detection: Presenting already-rotated refresh token revokes entire family', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     // Replay first refresh token (which was already rotated)
     const res = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: 'POST',
@@ -305,7 +382,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(secondRes.status, 401);
   });
 
-  it('13. Suspended account rejection: Suspended user cannot log in (HTTP 403)', async () => {
+  it('13. Suspended account rejection: Suspended user cannot log in (HTTP 403)', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     await User.updateOne({ mobile: testMobile2 }, { $set: { status: 'SUSPENDED' } });
 
     const res = await fetch(`${baseUrl}/api/auth/login`, {
@@ -323,7 +405,12 @@ describe('Authentication & Session Management Integration Tests', () => {
     assert.equal(body.error.code, 'ACCOUNT_SUSPENDED');
   });
 
-  it('14. POST /api/auth/logout succeeds and revokes session', async () => {
+  it('14. POST /api/auth/logout succeeds and revokes session', async (t) => {
+    if (isSuiteBlocked) {
+      t.skip(blockReason);
+      return;
+    }
+
     const res = await fetch(`${baseUrl}/api/auth/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

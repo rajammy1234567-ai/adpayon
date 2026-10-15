@@ -17,21 +17,23 @@ import { Input } from '../../components/ui/Input';
 import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
+import { loginApi, sendOtpApi } from '../../services/api/auth.api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OTPLogin'>;
 
 export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
   const { t } = useTranslation();
-  const { login } = useAuthStore();
-  const [mobile, setMobile] = useState('9876543210');
-  const [password, setPassword] = useState('password123');
+  const { setAuthSession } = useAuthStore();
+  const [mobile, setMobile] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<{ mobile?: string; password?: string }>({});
+  const [isOtpLoading, setIsOtpLoading] = useState(false);
+  const [errors, setErrors] = useState<{ mobile?: string; password?: string; general?: string }>({});
 
   const validate = () => {
     const err: { mobile?: string; password?: string } = {};
-    if (!/^[6-9]\d{9}$/.test(mobile)) {
+    if (!/^[6-9]\d{9}$/.test(mobile.trim())) {
       err.mobile = 'Enter a valid 10-digit Indian mobile number';
     }
     if (!password || password.length < 6) {
@@ -41,22 +43,59 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
     return Object.keys(err).length === 0;
   };
 
-  const handlePasswordLogin = () => {
+  const handlePasswordLogin = async () => {
     if (!validate()) return;
     setIsLoading(true);
-    setTimeout(() => {
+    setErrors({});
+
+    try {
+      const response = await loginApi({
+        mobile: mobile.trim(),
+        password,
+      });
+
+      if (response.success && response.data?.tokens && response.data?.user) {
+        // Securely establish authenticated session (declaratively transitions RootNavigator to MainTabs)
+        await setAuthSession(response.data.user, response.data.tokens);
+      }
+    } catch (err: any) {
+      if (err.code === 'PENDING_VERIFICATION') {
+        // Account needs phone verification before first password login; redirect to OTP verify
+        navigation.navigate('OTPVerify', {
+          mobile: mobile.trim(),
+          mode: 'SIGNUP',
+        });
+      } else if (err.code === 'INVALID_CREDENTIALS') {
+        setErrors({ general: 'Invalid mobile number or password.' });
+      } else if (err.code === 'ACCOUNT_SUSPENDED') {
+        setErrors({ general: err.message || 'Account is suspended. Please contact support.' });
+      } else {
+        setErrors({ general: err.message || 'Login failed. Please verify credentials.' });
+      }
+    } finally {
       setIsLoading(false);
-      // Navigate to OTP verification for 2-step verification security
-      navigation.navigate('OTPVerify', { mobile, mode: 'LOGIN' });
-    }, 800);
+    }
   };
 
-  const handleRequestOtp = () => {
-    if (!/^[6-9]\d{9}$/.test(mobile)) {
+  const handleRequestOtp = async () => {
+    if (!/^[6-9]\d{9}$/.test(mobile.trim())) {
       setErrors({ mobile: 'Enter a valid 10-digit mobile number' });
       return;
     }
-    navigation.navigate('OTPVerify', { mobile, mode: 'LOGIN' });
+    setIsOtpLoading(true);
+    setErrors({});
+
+    try {
+      await sendOtpApi({
+        mobile: mobile.trim(),
+        purpose: 'LOGIN',
+      });
+      navigation.navigate('OTPVerify', { mobile: mobile.trim(), mode: 'LOGIN' });
+    } catch (err: any) {
+      setErrors({ general: err.message || 'Failed to dispatch login OTP. Please try again.' });
+    } finally {
+      setIsOtpLoading(false);
+    }
   };
 
   return (
@@ -77,6 +116,12 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* Form Card */}
           <Card variant="elevated" style={styles.card}>
+            {errors.general ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>{errors.general}</Text>
+              </View>
+            ) : null}
+
             <Input
               label={t('auth.mobileNumber')}
               placeholder={t('auth.mobilePlaceholder')}
@@ -85,7 +130,9 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
               value={mobile}
               onChangeText={(text) => {
                 setMobile(text);
-                if (errors.mobile) setErrors({ ...errors, mobile: undefined });
+                if (errors.mobile || errors.general) {
+                  setErrors({ ...errors, mobile: undefined, general: undefined });
+                }
               }}
               error={errors.mobile}
               leftIcon={<Text style={styles.prefix}>+91</Text>}
@@ -98,7 +145,9 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
               value={password}
               onChangeText={(text) => {
                 setPassword(text);
-                if (errors.password) setErrors({ ...errors, password: undefined });
+                if (errors.password || errors.general) {
+                  setErrors({ ...errors, password: undefined, general: undefined });
+                }
               }}
               error={errors.password}
               rightIcon={
@@ -135,6 +184,7 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
               onPress={handleRequestOtp}
               variant="secondary"
               size="md"
+              isLoading={isOtpLoading}
             />
           </Card>
 
@@ -199,6 +249,20 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: THEME.spacing.xl,
+  },
+  errorBanner: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: THEME.colors.danger,
+    borderRadius: THEME.borderRadius.md,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorBannerText: {
+    color: THEME.colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   prefix: {
     color: THEME.colors.emerald,

@@ -19,11 +19,10 @@ import { useAuthStore } from '../../store/authStore';
 export const ReferralInviteScreen: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
-  const [preferredLeg, setPreferredLeg] = useState<'LEFT' | 'RIGHT'>('LEFT');
   const [copied, setCopied] = useState(false);
 
-  const code = user?.referralCode || 'ADP8829';
-  const referralLink = `https://adpayon.com/join?ref=${code}&leg=${preferredLeg}`;
+  const code = user?.referralCode || 'ADP1000';
+  const referralLink = `https://adpayon.com/join?ref=${code}`;
 
   const handleCopy = () => {
     setCopied(true);
@@ -34,11 +33,11 @@ export const ReferralInviteScreen: React.FC = () => {
   const handleShare = async () => {
     try {
       await Share.share({
-        title: 'Join AdPayOn Network',
-        message: `Join India's premier earning & binary network AdPayOn! Earn ₹50 signup bonus, 55% level income, and daily binary matching payouts. Register now with my code ${code}: ${referralLink}`,
+        title: 'Join My AdPayOn Team',
+        message: `Join my team on AdPayOn to build your network and unlock verified rewards! Register with my referral code ${code}: ${referralLink}`,
       });
-    } catch (err) {
-      // User dismissed
+    } catch {
+      // User dismissed share
     }
   };
 
@@ -46,7 +45,7 @@ export const ReferralInviteScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <Header
         title={t('referral.title')}
-        subtitle="Multiply earnings with 55% level & 40% binary matching"
+        subtitle="Invite partners and build your verified unilevel team"
       />
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -66,58 +65,23 @@ export const ReferralInviteScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Preferred Placement Leg */}
-          <View style={styles.legSelector}>
-            <Text style={styles.legLabel}>Default Placement Leg for Invitees:</Text>
-            <View style={styles.legToggleRow}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setPreferredLeg('LEFT')}
-                style={[
-                  styles.legToggleBtn,
-                  preferredLeg === 'LEFT' ? styles.legToggleActive : undefined,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.legToggleText,
-                    preferredLeg === 'LEFT' ? styles.legToggleTextActive : undefined,
-                  ]}
-                >
-                  ⬅️ Left Leg
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setPreferredLeg('RIGHT')}
-                style={[
-                  styles.legToggleBtn,
-                  preferredLeg === 'RIGHT' ? styles.legToggleActive : undefined,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.legToggleText,
-                    preferredLeg === 'RIGHT' ? styles.legToggleTextActive : undefined,
-                  ]}
-                >
-                  ➡️ Right Leg
-                </Text>
-              </TouchableOpacity>
-            </View>
+          {/* Referral Link Quick Display */}
+          <View style={styles.linkRow}>
+            <Text style={styles.linkText} numberOfLines={1}>
+              {referralLink}
+            </Text>
           </View>
 
           {/* Share Buttons */}
           <Button
-            title="💬 Share via WhatsApp"
+            title="💬 Share Invite Link"
             onPress={handleShare}
             variant="primary"
             size="lg"
             style={styles.shareBtn}
           />
           <Button
-            title="🔗 Copy Custom Deep Link"
+            title="🔗 Copy Referral Link"
             onPress={handleCopy}
             variant="secondary"
             size="md"
@@ -133,46 +97,65 @@ export const ReferralInviteScreen: React.FC = () => {
             <Text style={styles.qrSub}>{code}</Text>
           </View>
           <Text style={styles.qrHelper}>
-            Show this QR code at local seminars or team meetups for instant scan registration.
+            Show this QR code at local meetups or share directly for instant registration.
           </Text>
         </Card>
 
-        {/* 8-Level Commission Breakdown Table */}
+        {/* How Referrals Work Guide Card */}
         <Card variant="default" style={styles.benefitsCard}>
-          <Text style={styles.benefitsTitle}>8-Generation Level Commission Payout</Text>
+          <Text style={styles.benefitsTitle}>How Unilevel Referrals Work</Text>
           <Text style={styles.benefitsSubtitle}>
-            Every time a direct or indirect downline member completes activities, you earn!
+            Grow your team network without artificial binary placement limits.
           </Text>
 
-          <View style={styles.table}>
-            <View style={styles.tableRowHeader}>
-              <Text style={styles.th}>Generation</Text>
-              <Text style={styles.th}>Commission %</Text>
-              <Text style={styles.th}>Status</Text>
+          <View style={styles.stepsList}>
+            <View style={styles.stepItem}>
+              <View style={styles.stepNumberCircle}>
+                <Text style={styles.stepNumber}>1</Text>
+              </View>
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>Share Your Code</Text>
+                <Text style={styles.stepDesc}>
+                  Share your unique referral code or link with friends, colleagues, and community partners.
+                </Text>
+              </View>
             </View>
 
-            {[
-              { lvl: 'Level 1 (Direct)', pct: '25%', unlocked: true },
-              { lvl: 'Level 2', pct: '10%', unlocked: true },
-              { lvl: 'Level 3', pct: '5%', unlocked: true },
-              { lvl: 'Level 4', pct: '4%', unlocked: true },
-              { lvl: 'Level 5', pct: '3%', unlocked: true },
-              { lvl: 'Level 6', pct: '3%', unlocked: true },
-              { lvl: 'Level 7', pct: '3%', unlocked: true },
-              { lvl: 'Level 8', pct: '2%', unlocked: true },
-            ].map((row, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.tableRow,
-                  i % 2 === 0 ? styles.tableRowAlt : undefined,
-                ]}
-              >
-                <Text style={styles.tdLvl}>{row.lvl}</Text>
-                <Text style={styles.tdPct}>{row.pct}</Text>
-                <Text style={styles.tdStatus}>✓ Active</Text>
+            <View style={styles.stepItem}>
+              <View style={styles.stepNumberCircle}>
+                <Text style={styles.stepNumber}>2</Text>
               </View>
-            ))}
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>Direct Team (Level 1)</Text>
+                <Text style={styles.stepDesc}>
+                  Every user who signs up with your code becomes your direct team member with unlimited width.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.stepItem}>
+              <View style={styles.stepNumberCircle}>
+                <Text style={styles.stepNumber}>3</Text>
+              </View>
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>Multi-Level Downline</Text>
+                <Text style={styles.stepDesc}>
+                  When your direct team invites others, your downstream genealogy expands across deep levels.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.stepItem}>
+              <View style={styles.stepNumberCircle}>
+                <Text style={styles.stepNumber}>4</Text>
+              </View>
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>Verified Rank Progression</Text>
+                <Text style={styles.stepDesc}>
+                  Building an active, verified network unlocks community tiers, higher daily streak rewards, and team challenges.
+                </Text>
+              </View>
+            </View>
           </View>
         </Card>
       </ScrollView>
@@ -225,39 +208,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: THEME.colors.goldLight,
   },
-  legSelector: {
-    marginVertical: 14,
-  },
-  legLabel: {
-    fontSize: 12,
-    color: THEME.colors.textMuted,
-    marginBottom: 8,
-  },
-  legToggleRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  legToggleBtn: {
-    flex: 1,
+  linkRow: {
     backgroundColor: THEME.colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    paddingVertical: 10,
-    borderRadius: THEME.borderRadius.md,
-    alignItems: 'center',
+    padding: 10,
+    borderRadius: THEME.borderRadius.sm,
+    marginBottom: 16,
   },
-  legToggleActive: {
-    borderColor: THEME.colors.emerald,
-    backgroundColor: THEME.colors.emeraldGlow,
-  },
-  legToggleText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-  },
-  legToggleTextActive: {
+  linkText: {
+    fontSize: 12,
     color: THEME.colors.emerald,
-    fontWeight: '800',
+    fontFamily: 'monospace',
   },
   shareBtn: {
     marginBottom: 10,
@@ -309,7 +269,7 @@ const styles = StyleSheet.create({
     padding: THEME.spacing.lg,
   },
   benefitsTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
   },
@@ -317,53 +277,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: THEME.colors.textSecondary,
     marginTop: 4,
-    marginBottom: 14,
+    marginBottom: 16,
   },
-  table: {
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    borderRadius: THEME.borderRadius.md,
-    overflow: 'hidden',
+  stepsList: {
+    gap: 14,
   },
-  tableRowHeader: {
+  stepItem: {
     flexDirection: 'row',
-    backgroundColor: THEME.colors.surfaceSubtle,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
+    alignItems: 'flex-start',
   },
-  th: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '800',
-    color: THEME.colors.textMuted,
-    textTransform: 'uppercase',
+  stepNumberCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: THEME.colors.emeraldGlow,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.emerald,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    marginTop: 2,
   },
-  tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  tableRowAlt: {
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-  },
-  tdLvl: {
-    flex: 1,
-    fontSize: 12,
-    color: THEME.colors.textPrimary,
-    fontWeight: '600',
-  },
-  tdPct: {
-    flex: 1,
+  stepNumber: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
     color: THEME.colors.emerald,
   },
-  tdStatus: {
+  stepContent: {
     flex: 1,
-    fontSize: 11,
+  },
+  stepTitle: {
+    fontSize: 14,
     fontWeight: '700',
-    color: THEME.colors.emerald,
+    color: THEME.colors.textPrimary,
+    marginBottom: 2,
+  },
+  stepDesc: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    lineHeight: 17,
   },
 });

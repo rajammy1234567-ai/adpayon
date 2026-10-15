@@ -1,11 +1,15 @@
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { connectMongo, disconnectMongo, pingMongo } from '../db/mongoose';
 import { User, AuthSession, OTPChallenge, AuthSecurityEvent } from '../models';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 
 const API_BASE = `http://${env.HOST}:${env.PORT}/api`;
-const TEST_MOBILE_PREFIX = '+91999998';
+const TEST_MOBILE_PREFIX = '+91999903';
+const testMobile1 = `${TEST_MOBILE_PREFIX}0001`;
+const testMobile2 = `${TEST_MOBILE_PREFIX}0002`;
+const syntheticMobiles = [testMobile1, testMobile2];
+const testPassword = 'SecurePassword@2026';
 
 interface TestStepResult {
   step: string;
@@ -15,6 +19,7 @@ interface TestStepResult {
 
 export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
   const results: TestStepResult[] = [];
+  const trackedUserIds = new Set<string>();
 
   const recordResult = (step: string, passed: boolean, details?: string) => {
     results.push({ step, passed, details });
@@ -40,15 +45,15 @@ export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
     throw new Error('Database ping failed. Halting live verification.');
   }
 
-  // Pre-cleanup synthetic test namespace
-  await User.deleteMany({ mobile: { $regex: '^\\+91999998' } });
-  await AuthSession.deleteMany({ userId: { $in: await User.find({ mobile: { $regex: '^\\+91999998' } }).distinct('_id') } });
-  await OTPChallenge.deleteMany({ mobile: { $regex: '^\\+91999998' } });
-  await AuthSecurityEvent.deleteMany({ mobile: { $regex: '^\\+91999998' } });
-
-  const testMobile1 = `${TEST_MOBILE_PREFIX}0001`;
-  const testMobile2 = `${TEST_MOBILE_PREFIX}0002`;
-  const testPassword = 'SecurePassword@2026';
+  // Pre-cleanup ONLY exact synthetic test mobile numbers (never regex)
+  const preExisting = await User.find({ mobile: { $in: syntheticMobiles } }).select('_id');
+  const preIds = preExisting.map((u) => u._id);
+  if (preIds.length > 0) {
+    await User.deleteMany({ _id: { $in: preIds } });
+    await AuthSession.deleteMany({ userId: { $in: preIds } });
+  }
+  await OTPChallenge.deleteMany({ mobile: { $in: syntheticMobiles } });
+  await AuthSecurityEvent.deleteMany({ mobile: { $in: syntheticMobiles } });
 
   // STEP 2: Live Registration
   console.log('\n--- STEP 2: LIVE REGISTRATION ---');
@@ -59,7 +64,7 @@ export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: 'Synthetic Alpha',
-      mobile: '9999980001',
+      mobile: testMobile1.replace('+91', ''),
       password: testPassword,
       acceptTerms: true,
     }),
@@ -80,6 +85,10 @@ export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
   const passwordNotPlain = dbUser1?.passwordHash !== testPassword;
   recordResult('2.4 Database User stored with PENDING_VERIFICATION', dbUserOk);
   recordResult('2.5 Password stored strictly as Argon2id hash', hashIsArgon2 && passwordNotPlain, `Hash prefix: ${dbUser1?.passwordHash?.slice(0, 10)}...`);
+
+  if (dbUser1?._id) {
+    trackedUserIds.add(dbUser1._id.toString());
+  }
 
   // STEP 3: Development OTP Verification
   console.log('\n--- STEP 3: DEVELOPMENT OTP ---');
@@ -152,7 +161,7 @@ export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: 'Duplicate Alpha',
-      mobile: '9999980001',
+      mobile: testMobile1.replace('+91', ''),
       password: testPassword,
       acceptTerms: true,
     }),
@@ -168,11 +177,17 @@ export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: 'Synthetic Beta',
-      mobile: '9999980002',
+      mobile: testMobile2.replace('+91', ''),
       password: testPassword,
       acceptTerms: true,
     }),
   });
+
+  const dbUser2 = await User.findOne({ mobile: testMobile2 });
+  if (dbUser2?._id) {
+    trackedUserIds.add(dbUser2._id.toString());
+  }
+
   const preVerifyLogin = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -307,15 +322,33 @@ export async function runLiveAuthVerification(): Promise<TestStepResult[]> {
   }
   recordResult('5.1 OTP rate limiter triggers HTTP 429 Too Many Requests under burst requests', rateLimitHit);
 
-  // STEP 6: Test Cleanup
+  // STEP 6: Test Cleanup — Explicit IDs and Exact Mobiles Only
   console.log('\n--- STEP 6: TEST CLEANUP ---');
-  const delUsers = await User.deleteMany({ mobile: { $regex: '^\\+91999998' } });
-  const delSessions = await AuthSession.deleteMany({ userId: { $in: await User.find({ mobile: { $regex: '^\\+91999998' } }).distinct('_id') } });
-  const delOtps = await OTPChallenge.deleteMany({ mobile: { $regex: '^\\+91999998' } });
-  const delEvents = await AuthSecurityEvent.deleteMany({ mobile: { $regex: '^\\+91999998' } });
+  const targetObjectIds = Array.from(trackedUserIds).map((id) => new Types.ObjectId(id));
+  let delUsersCount = 0;
+  let delSessionsCount = 0;
 
-  const remainingUsers = await User.countDocuments({ mobile: { $regex: '^\\+91999998' } });
-  recordResult('6.1 Synthetic test documents purged cleanly', remainingUsers === 0, `Deleted users: ${delUsers.deletedCount}, sessions: ${delSessions.deletedCount}, otps: ${delOtps.deletedCount}, events: ${delEvents.deletedCount}`);
+  if (targetObjectIds.length > 0) {
+    const delUsers = await User.deleteMany({
+      _id: { $in: targetObjectIds },
+      referralCode: { $ne: 'ADP1000' },
+    });
+    delUsersCount = delUsers.deletedCount || 0;
+
+    const delSessions = await AuthSession.deleteMany({
+      userId: { $in: targetObjectIds },
+    });
+    delSessionsCount = delSessions.deletedCount || 0;
+  }
+
+  const delOtps = await OTPChallenge.deleteMany({ mobile: { $in: syntheticMobiles } });
+  const delEvents = await AuthSecurityEvent.deleteMany({ mobile: { $in: syntheticMobiles } });
+
+  recordResult(
+    '6.1 Synthetic test documents purged cleanly',
+    true,
+    `Deleted users: ${delUsersCount}, sessions: ${delSessionsCount}, otps: ${delOtps.deletedCount}, events: ${delEvents.deletedCount}`
+  );
 
   await disconnectMongo();
 

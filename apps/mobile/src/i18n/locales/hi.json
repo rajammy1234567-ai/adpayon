@@ -63,8 +63,7 @@
     "withdrawNow": "पैसे निकालें",
     "earningsBreakdown": "कमाई का विवरण",
     "adsEarnings": "विज्ञापन देखकर",
-    "referralsEarnings": "लेवल नेटवर्क",
-    "binaryEarnings": "बाइनरी मैचिंग",
+    "referralsEarnings": "रेफरल नेटवर्क",
     "challengesEarnings": "पार्टनर टास्क",
     "rankRewards": "रैंक रिवार्ड्स",
     "quickActions": "त्वरित सेवाएं",
@@ -73,9 +72,7 @@
     "dailyQuiz": "दैनिक क्विज़",
     "recharge": "रिचार्ज",
     "shopping": "कैशबैक",
-    "myTeam": "मेरी टीम",
-    "leftLeg": "बायाँ लेग",
-    "rightLeg": "दायाँ लेग",
+    "myTeam": "मेरी टीम नेटवर्क",
     "units": "यूनिट्स",
     "members": "सदस्य"
   },
@@ -100,20 +97,17 @@
     "confirmWithdrawal": "निकासी अनुरोध भेजें"
   },
   "team": {
-    "myTeam": "मेरा 8-लेवल नेटवर्क",
-    "treeOverview": "बाइनरी नेटवर्क संरचना",
+    "myTeam": "मेरी रेफरल टीम",
+    "treeOverview": "यूनिलेवल नेटवर्क संरचना",
     "totalMembers": "कुल सदस्य",
-    "leftVolume": "बायाँ वॉल्यूम",
-    "rightVolume": "दायाँ वॉल्यूम",
-    "carryForward": "कैरी फॉरवर्ड",
     "level": "लेवल",
     "expandTree": "डाउनलाइन देखें",
     "sponsor": "स्पॉन्सर",
-    "directReferrals": "प्रत्यक्ष रेफरल्स"
+    "directReferrals": "प्रत्यक्ष टीम (L1)"
   },
   "referral": {
     "title": "मित्रों को आमंत्रित करें",
-    "subtitle": "8 लेवल्स तक 55% लेवल कमीशन और सक्रिय जोड़ियों पर 40% बाइनरी मैचिंग कमाएं!",
+    "subtitle": "अपनी यूनिलेवल टीम का निर्माण करें और सत्यापित पुरस्कार प्राप्त करें!",
     "yourCode": "आपका रेफरल कोड",
     "shareViaWhatsApp": "व्हाट्सएप पर शेयर करें",
     "copyLink": "रेफरल लिंक कॉपी करें",

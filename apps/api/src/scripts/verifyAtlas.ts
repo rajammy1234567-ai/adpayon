@@ -20,8 +20,8 @@ interface VerificationSummary {
   cleanupSuccessful: boolean;
 }
 
-const TEST_MOBILE_PREFIX = '+91999999000';
-const TEST_REF_PREFIX = 'TESTREF';
+const TEST_MOBILE_PREFIX = '+91999904';
+const TEST_REF_PREFIX = 'ATLASREF';
 
 export async function runAtlasVerification(): Promise<VerificationSummary> {
   const summary: VerificationSummary = {
@@ -39,6 +39,10 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
     transactionRollbackPassed: false,
     cleanupSuccessful: false,
   };
+
+  const createdUserIds = new Set<string>();
+  const createdSessionIds = new Set<string>();
+  const createdAuditIds = new Set<string>();
 
   logger.info({ database: env.MONGODB_DB_NAME }, 'Starting MongoDB Atlas Integration Verification...');
 
@@ -77,14 +81,22 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
   summary.indexesVerified = true;
   logger.info('STEP 2: All required unique, reference, and TTL indexes verified on Atlas.');
 
-  // Clean any stale test records from previous test runs first
-  await User.deleteMany({ mobile: { $regex: '^\\+91999999000' } });
-  await AuthSession.deleteMany({ familyId: { $regex: '^test-family-' } });
-  await AdminAuditLog.deleteMany({ action: { $regex: '^TEST_' } });
+  const testMobile1 = `${TEST_MOBILE_PREFIX}0001`;
+  const testMobile2 = `${TEST_MOBILE_PREFIX}0002`;
+  const commitMobile = `${TEST_MOBILE_PREFIX}0003`;
+  const rollbackMobile = `${TEST_MOBILE_PREFIX}0004`;
+  const exactSyntheticMobiles = [testMobile1, testMobile2, commitMobile, rollbackMobile];
+
+  // Clean only exact synthetic mobiles from prior runs if any exist (never regex)
+  const priorUsers = await User.find({ mobile: { $in: exactSyntheticMobiles } }).select('_id');
+  const priorIds = priorUsers.map((u) => u._id);
+  if (priorIds.length > 0) {
+    await User.deleteMany({ _id: { $in: priorIds } });
+    await AuthSession.deleteMany({ userId: { $in: priorIds } });
+  }
 
   // 3. Synthetic User CRUD & Validation
   logger.info('STEP 3: Testing synthetic User CRUD operations...');
-  const testMobile1 = `${TEST_MOBILE_PREFIX}1`;
   const testRef1 = `${TEST_REF_PREFIX}01`;
 
   const testUser = await User.create({
@@ -100,6 +112,7 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
   if (!testUser._id) {
     throw new Error('Failed to create synthetic user document.');
   }
+  createdUserIds.add(testUser._id.toString());
 
   // Read back and update
   const fetchedUser = await User.findById(testUser._id);
@@ -136,7 +149,7 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
   let duplicateRefCaught = false;
   try {
     await User.create({
-      mobile: `${TEST_MOBILE_PREFIX}2`,
+      mobile: testMobile2,
       name: 'Duplicate Referral User',
       passwordHash: '$2b$12$anotherhash',
       referralCode: testRef1, // Duplicate referralCode
@@ -155,6 +168,7 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
     familyId: 'test-family-1',
     expiresAt: new Date(Date.now() + 86400000),
   });
+  createdSessionIds.add(testSession._id.toString());
 
   let duplicateSessionTokenCaught = false;
   try {
@@ -191,13 +205,13 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
   if (!testAudit._id) {
     throw new Error('Failed to create AdminAuditLog record.');
   }
+  createdAuditIds.add(testAudit._id.toString());
   logger.info('STEP 5: AdminAuditLog document verified.');
 
   // 6. Multi-Document ACID Transactions
   logger.info('STEP 6: Testing MongoDB Multi-Document ACID Transactions...');
 
   // Test 6A: Successful Transaction Commit
-  const commitMobile = `${TEST_MOBILE_PREFIX}3`;
   const commitRef = `${TEST_REF_PREFIX}03`;
   const commitTokenHash = 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0';
 
@@ -216,7 +230,7 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
         { session: session1 }
       );
 
-      await AuthSession.create(
+      const s = await AuthSession.create(
         [
           {
             userId: u[0]._id,
@@ -227,6 +241,9 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
         ],
         { session: session1 }
       );
+
+      createdUserIds.add(u[0]._id.toString());
+      createdSessionIds.add(s[0]._id.toString());
     });
 
     // Verify documents exist outside session
@@ -242,7 +259,6 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
   }
 
   // Test 6B: Transaction Abort & Rollback
-  const rollbackMobile = `${TEST_MOBILE_PREFIX}4`;
   const rollbackRef = `${TEST_REF_PREFIX}04`;
 
   const session2 = await mongoose.startSession();
@@ -279,19 +295,45 @@ export async function runAtlasVerification(): Promise<VerificationSummary> {
   summary.transactionRollbackPassed = true;
   logger.info('STEP 6B: Multi-document transaction rollback verified successfully.');
 
-  // 7. Cleanup only test-owned records
-  logger.info('STEP 7: Cleaning up disposable synthetic test data...');
-  const userDeleteResult = await User.deleteMany({ mobile: { $regex: '^\\+91999999000' } });
-  const sessionDeleteResult = await AuthSession.deleteMany({ familyId: { $regex: '^test-family-' } });
-  const auditDeleteResult = await AdminAuditLog.deleteMany({ action: { $regex: '^TEST_' } });
+  // 7. Cleanup only test-owned records via tracked IDs (NEVER broad regexes)
+  logger.info('STEP 7: Cleaning up disposable synthetic test data via exact IDs...');
+  const userObjIds = Array.from(createdUserIds).map((id) => new Types.ObjectId(id));
+  const sessionObjIds = Array.from(createdSessionIds).map((id) => new Types.ObjectId(id));
+  const auditObjIds = Array.from(createdAuditIds).map((id) => new Types.ObjectId(id));
+
+  let deletedUsers = 0;
+  let deletedSessions = 0;
+  let deletedAuditLogs = 0;
+
+  if (userObjIds.length > 0) {
+    const userDeleteResult = await User.deleteMany({
+      _id: { $in: userObjIds },
+      referralCode: { $ne: 'ADP1000' },
+    });
+    deletedUsers = userDeleteResult.deletedCount || 0;
+  }
+
+  if (sessionObjIds.length > 0) {
+    const sessionDeleteResult = await AuthSession.deleteMany({
+      _id: { $in: sessionObjIds },
+    });
+    deletedSessions = sessionDeleteResult.deletedCount || 0;
+  }
+
+  if (auditObjIds.length > 0) {
+    const auditDeleteResult = await AdminAuditLog.deleteMany({
+      _id: { $in: auditObjIds },
+    });
+    deletedAuditLogs = auditDeleteResult.deletedCount || 0;
+  }
 
   logger.info(
     {
-      deletedUsers: userDeleteResult.deletedCount,
-      deletedSessions: sessionDeleteResult.deletedCount,
-      deletedAuditLogs: auditDeleteResult.deletedCount,
+      deletedUsers,
+      deletedSessions,
+      deletedAuditLogs,
     },
-    'Synthetic test records purged.'
+    'Synthetic test records purged cleanly using exact ObjectIds.'
   );
 
   summary.cleanupSuccessful = true;

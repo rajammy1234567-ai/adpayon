@@ -1,3 +1,4 @@
+import React from 'react';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { THEME } from '../constants/theme';
@@ -18,6 +19,7 @@ import { MobileRechargeScreen } from '../screens/utility/MobileRechargeScreen';
 import { ShoppingCashbackScreen } from '../screens/utility/ShoppingCashbackScreen';
 import { AppTabs } from './AppTabs';
 import { RootStackParamList } from './types';
+import { useAuthStore } from '../store/authStore';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -35,32 +37,49 @@ const AppNavTheme = {
 };
 
 export const RootNavigator: React.FC = () => {
+  const { isAuthenticated, isInitialized, user } = useAuthStore();
+
   return (
     <NavigationContainer theme={AppNavTheme}>
       <Stack.Navigator
-        initialRouteName="Splash"
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
           contentStyle: { backgroundColor: THEME.colors.background },
         }}
       >
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Intro" component={IntroScreen} />
-        <Stack.Screen name="OTPLogin" component={OTPLoginScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-        <Stack.Screen name="OTPVerify" component={OTPVerifyScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-        <Stack.Screen name="OnboardingChallenges" component={ChallengeListScreen} />
-        <Stack.Screen name="MainTabs" component={AppTabs} />
-        <Stack.Screen name="ReferralInvite" component={ReferralInviteScreen} />
-        <Stack.Screen name="QuizLeaderboard" component={QuizLeaderboardScreen} />
-        <Stack.Screen name="ScratchEarn" component={ScratchEarnScreen} />
-        <Stack.Screen name="RankRewards" component={RankRewardsScreen} />
-        <Stack.Screen name="DailyStreak" component={DailyStreakScreen} />
-        <Stack.Screen name="MobileRecharge" component={MobileRechargeScreen} />
-        <Stack.Screen name="ShoppingCashback" component={ShoppingCashbackScreen} />
-        <Stack.Screen name="KycUpload" component={KycUploadScreen} />
+        {!isInitialized ? (
+          // 1. App Launch & Session Rehydration Phase
+          <Stack.Screen name="Splash" component={SplashScreen} />
+        ) : !isAuthenticated ? (
+          // 2. Unauthenticated Auth Flow (Zero authenticated screens in memory or back stack)
+          <Stack.Group>
+            <Stack.Screen name="Intro" component={IntroScreen} />
+            <Stack.Screen name="OTPLogin" component={OTPLoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+            <Stack.Screen name="OTPVerify" component={OTPVerifyScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          </Stack.Group>
+        ) : (
+          // 3. Authenticated App Flow (Zero auth/login screens in memory or back history)
+          <Stack.Group>
+            {user && !user.dashboardUnlocked ? (
+              <Stack.Screen name="OnboardingChallenges" component={ChallengeListScreen} />
+            ) : null}
+            <Stack.Screen name="MainTabs" component={AppTabs} />
+            {user?.dashboardUnlocked ? (
+              <Stack.Screen name="OnboardingChallenges" component={ChallengeListScreen} />
+            ) : null}
+            <Stack.Screen name="ReferralInvite" component={ReferralInviteScreen} />
+            <Stack.Screen name="QuizLeaderboard" component={QuizLeaderboardScreen} />
+            <Stack.Screen name="ScratchEarn" component={ScratchEarnScreen} />
+            <Stack.Screen name="RankRewards" component={RankRewardsScreen} />
+            <Stack.Screen name="DailyStreak" component={DailyStreakScreen} />
+            <Stack.Screen name="MobileRecharge" component={MobileRechargeScreen} />
+            <Stack.Screen name="ShoppingCashback" component={ShoppingCashbackScreen} />
+            <Stack.Screen name="KycUpload" component={KycUploadScreen} />
+          </Stack.Group>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

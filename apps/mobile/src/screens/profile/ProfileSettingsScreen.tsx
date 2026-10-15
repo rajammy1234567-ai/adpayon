@@ -33,9 +33,8 @@ export const ProfileSettingsScreen: React.FC = () => {
       {
         text: 'Log Out',
         style: 'destructive',
-        onPress: () => {
-          logout();
-          navigation.replace('Intro');
+        onPress: async () => {
+          await logout();
         },
       },
     ]);

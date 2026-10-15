@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { healthRouter } from './routes/health.routes';
 import { authRouter } from './routes/auth.routes';
+import { referralRouter } from './routes/referral.routes';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -69,6 +70,7 @@ export function createApp(): Application {
   // API Routes
   app.use('/api', healthRouter);
   app.use('/api', authRouter);
+  app.use('/api/referrals', referralRouter);
 
   // 404 Fallback
   app.use(notFoundHandler);

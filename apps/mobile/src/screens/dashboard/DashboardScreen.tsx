@@ -133,10 +133,10 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* Binary Network Volume Snapshot */}
-        <Card variant="default" style={styles.binaryCard}>
+        {/* Referral Network Snapshot */}
+        <Card variant="default" style={styles.networkCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Binary Team Matching Volume</Text>
+            <Text style={styles.sectionTitle}>Referral Team Network</Text>
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => navigation.navigate('MainTabs', { screen: 'Team' })}
@@ -145,35 +145,21 @@ export const DashboardScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.binaryLegsRow}>
-            {/* Left Leg */}
-            <View style={[styles.legBox, styles.leftLegBox]}>
-              <View style={styles.legHeader}>
-                <Text style={styles.legName}>⬅️ {t('dashboard.leftLeg')}</Text>
-                <Badge label="42 Members" variant="cyan" />
-              </View>
-              <Text style={styles.legVolume}>
-                {user?.binaryStats.leftVolumeUnits || 1420}{' '}
-                <Text style={styles.unitSub}>PV</Text>
+          <View style={styles.networkGridRow}>
+            <View style={styles.networkMetricBox}>
+              <Text style={styles.networkMetricValue}>
+                {user?.directReferralsCount ?? 0}
               </Text>
-              <Text style={styles.carryText}>
-                Carry: {user?.binaryStats.leftCarryForwardUnits || 320} PV
-              </Text>
+              <Text style={styles.networkMetricLabel}>Direct Team (L1)</Text>
             </View>
 
-            {/* Right Leg */}
-            <View style={[styles.legBox, styles.rightLegBox]}>
-              <View style={styles.legHeader}>
-                <Text style={styles.legName}>➡️ {t('dashboard.rightLeg')}</Text>
-                <Badge label="38 Members" variant="gold" />
-              </View>
-              <Text style={styles.legVolume}>
-                {user?.binaryStats.rightVolumeUnits || 1100}{' '}
-                <Text style={styles.unitSub}>PV</Text>
+            <View style={styles.networkMetricDivider} />
+
+            <View style={styles.networkMetricBox}>
+              <Text style={[styles.networkMetricValue, { color: THEME.colors.goldLight }]}>
+                {user?.referralCode || 'ADP1000'}
               </Text>
-              <Text style={styles.carryText}>
-                Matched: {user?.binaryStats.lifetimeMatchedVolumeUnits || 1100} PV
-              </Text>
+              <Text style={styles.networkMetricLabel}>My Referral Code</Text>
             </View>
           </View>
         </Card>
@@ -209,12 +195,12 @@ export const DashboardScreen: React.FC = () => {
 
             <View style={styles.sourceItem}>
               <View style={styles.sourceIconBox}>
-                <Text style={styles.sourceEmoji}>⚖️</Text>
+                <Text style={styles.sourceEmoji}>🎯</Text>
               </View>
               <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{t('dashboard.binaryEarnings')}</Text>
+                <Text style={styles.sourceName}>{t('dashboard.challengesEarnings')}</Text>
                 <Text style={styles.sourceAmount}>
-                  {formatPaiseToRupees(breakdown.binaryPaise)}
+                  {formatPaiseToRupees(breakdown.challengesPaise)}
                 </Text>
               </View>
             </View>
@@ -449,7 +435,7 @@ const styles = StyleSheet.create({
   inviteBtn: {
     flex: 1,
   },
-  binaryCard: {
+  networkCard: {
     marginBottom: 20,
     padding: THEME.spacing.md,
   },
@@ -469,48 +455,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.emerald,
   },
-  binaryLegsRow: {
+  networkGridRow: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  legBox: {
-    flex: 1,
+    alignItems: 'center',
     backgroundColor: THEME.colors.surfaceSubtle,
     borderRadius: THEME.borderRadius.md,
-    padding: 12,
-    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
-  leftLegBox: {
-    borderColor: THEME.colors.cyanGlow,
-  },
-  rightLegBox: {
-    borderColor: THEME.colors.goldGlow,
-  },
-  legHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  networkMetricBox: {
+    flex: 1,
     alignItems: 'center',
-    marginBottom: 8,
   },
-  legName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-  },
-  legVolume: {
-    fontSize: 18,
+  networkMetricValue: {
+    fontSize: 22,
     fontWeight: '900',
-    color: THEME.colors.textPrimary,
+    color: THEME.colors.emerald,
   },
-  unitSub: {
+  networkMetricLabel: {
     fontSize: 11,
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     fontWeight: '600',
+    marginTop: 2,
   },
-  carryText: {
-    fontSize: 11,
-    color: THEME.colors.textMuted,
-    marginTop: 4,
+  networkMetricDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: THEME.colors.borderSubtle,
   },
   breakdownCard: {
     marginBottom: 24,

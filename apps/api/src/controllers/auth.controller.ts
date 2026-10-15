@@ -51,6 +51,7 @@ export function sanitizeUser(user: IUser) {
     status: user.status,
     referralCode: user.referralCode,
     sponsorId: user.sponsorId ? user.sponsorId.toString() : null,
+    directReferralsCount: user.directReferralsCount || 0,
     metadata: user.metadata,
     createdAt: user.createdAt,
   };
@@ -138,6 +139,7 @@ export async function register(req: Request, res: Response): Promise<void> {
 
   // 2. Sponsor validation (if provided)
   let sponsorId = null;
+  let ancestors: any[] = [];
   if (sponsorReferralCode && sponsorReferralCode.trim() !== '') {
     const code = sponsorReferralCode.trim().toUpperCase();
     const sponsor = await User.findOne({ referralCode: code });
@@ -158,6 +160,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       }
     } else {
       sponsorId = sponsor._id;
+      ancestors = [...(sponsor.ancestors || []), sponsor._id];
     }
   }
 
@@ -179,6 +182,8 @@ export async function register(req: Request, res: Response): Promise<void> {
     status: 'PENDING_VERIFICATION',
     referralCode,
     sponsorId,
+    ancestors,
+    directReferralsCount: 0,
     metadata: {
       language: 'en',
       kycStatus: 'NOT_SUBMITTED',
@@ -312,16 +317,51 @@ export async function verifyOtp(req: Request, res: Response): Promise<void> {
 
   // Handle post-verification activation and token issuance
   if (parsed.data.purpose === 'REGISTRATION') {
+    // Atomic status transition from PENDING_VERIFICATION to ACTIVE
     const user = await User.findOneAndUpdate(
-      { mobile: normalizedMobile },
+      { mobile: normalizedMobile, status: 'PENDING_VERIFICATION' },
       { $set: { status: 'ACTIVE' } },
       { new: true }
     );
 
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        error: { code: 'USER_NOT_FOUND', message: 'User record not found.' },
+    if (user) {
+      // First-time activation: safely increment sponsor direct count
+      if (user.sponsorId) {
+        await User.findByIdAndUpdate(user.sponsorId, { $inc: { directReferralsCount: 1 } });
+      }
+    } else {
+      // Check if user is already ACTIVE (idempotent retry guard prevents double counting)
+      const existingActiveUser = await User.findOne({ mobile: normalizedMobile });
+      if (!existingActiveUser) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'USER_NOT_FOUND', message: 'User record not found.' },
+        });
+        return;
+      }
+      if (existingActiveUser.status !== 'ACTIVE') {
+        res.status(403).json({
+          success: false,
+          error: { code: 'ACCOUNT_NOT_ACTIVE', message: 'Account cannot be verified in current state.' },
+        });
+        return;
+      }
+
+      const tokens = await createAuthSession(
+        existingActiveUser._id,
+        existingActiveUser.role,
+        existingActiveUser.mobile,
+        req.headers['user-agent'],
+        req.ip
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Account verified successfully.',
+        data: {
+          tokens,
+          user: sanitizeUser(existingActiveUser),
+        },
       });
       return;
     }

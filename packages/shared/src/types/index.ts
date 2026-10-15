@@ -89,11 +89,12 @@ export interface UserProfile {
   sponsorName?: string;
   sponsorReferralCode?: string;
   parentId: string | null;
-  leg: LegPosition | null;
+  leg?: LegPosition | null; // Deprecated binary artifact
   materializedPath: string;
   depth: number;
-  binaryStats: BinaryStats;
+  binaryStats?: BinaryStats; // Deprecated binary artifact
   directReferralsCount: number;
+  totalDownlineCount?: number;
   currentRank: RankTier;
   rankAchievedAt?: string;
   deviceId: string;
@@ -174,18 +175,47 @@ export interface TeamMemberNode {
   referralCode: string;
   mobileMasked: string;
   level: number;
-  leg: LegPosition | null;
-  parentId: string | null;
+  leg?: LegPosition | null; // Deprecated binary artifact
+  parentId?: string | null;
   sponsorName: string;
   status: UserStatus;
   isActive: boolean;
   currentRank: RankTier;
   directReferralsCount: number;
-  leftCount: number;
-  rightCount: number;
+  totalDownlineCount?: number;
+  leftCount?: number; // Deprecated binary artifact
+  rightCount?: number; // Deprecated binary artifact
   joinedAt: string;
   hasChildren: boolean;
   children?: TeamMemberNode[];
+}
+
+export interface ReferralSummaryResponse {
+  directCount: number;
+  activeDirectCount: number;
+  totalDownlineCount: number;
+  activeDownlineCount: number;
+  referralCode: string;
+  sponsor: {
+    name: string;
+    referralCode: string;
+    mobileMasked?: string;
+  } | null;
+}
+
+export interface ReferralTreeNode {
+  id: string;
+  name: string;
+  referralCode: string;
+  mobileMasked: string;
+  level: number;
+  status: UserStatus;
+  isActive: boolean;
+  directReferralsCount: number;
+  totalDownlineCount: number;
+  joinedAt: string;
+  hasChildren: boolean;
+  children?: ReferralTreeNode[];
 }
 
 export interface LevelSlabConfig {

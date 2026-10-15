@@ -12,6 +12,8 @@ export interface IUser extends Document {
   status: UserStatus;
   referralCode: string;
   sponsorId?: Types.ObjectId | null;
+  ancestors: Types.ObjectId[];
+  directReferralsCount: number;
   metadata?: {
     language?: 'hi' | 'en';
     kycStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
@@ -62,7 +64,19 @@ const userSchema = new Schema<IUser>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       default: null,
+      immutable: true,
       index: true,
+    },
+    ancestors: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+      immutable: true,
+      index: true,
+    },
+    directReferralsCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     metadata: {
       language: { type: String, enum: ['hi', 'en'], default: 'en' },
@@ -79,4 +93,10 @@ const userSchema = new Schema<IUser>(
   }
 );
 
+// Compound indexes for unilevel referral tree performance
+userSchema.index({ sponsorId: 1, createdAt: -1 });
+userSchema.index({ ancestors: 1, createdAt: -1 });
+userSchema.index({ sponsorId: 1, status: 1 });
+
 export const User = model<IUser>('User', userSchema);
+

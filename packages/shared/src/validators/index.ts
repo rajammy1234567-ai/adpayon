@@ -5,9 +5,7 @@ export const signupSchema = z.object({
   mobile: z.string().regex(/^[6-9]\d{9}$/, 'Must be a valid 10-digit Indian mobile number'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   sponsorReferralCode: z.string().min(3, 'Valid sponsor code required').toUpperCase(),
-  leg: z.enum(['LEFT', 'RIGHT'], {
-    errorMap: () => ({ message: 'Please select binary leg: LEFT or RIGHT' }),
-  }),
+  leg: z.enum(['LEFT', 'RIGHT']).optional(), // Backward-compatible optional field
   acceptTerms: z.boolean().refine((val) => val === true, {
     message: 'You must accept the terms and conditions',
   }),

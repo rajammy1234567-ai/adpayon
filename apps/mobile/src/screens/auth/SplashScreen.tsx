@@ -16,9 +16,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
 export const SplashScreen: React.FC<Props> = ({ navigation }) => {
   const { t } = useTranslation();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isInitialized, initializeAuth } = useAuthStore();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     Animated.parallel([
@@ -34,18 +35,9 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
       }),
     ]).start();
 
-    const timer = setTimeout(() => {
-      if (!isAuthenticated) {
-        navigation.replace('Intro');
-      } else if (!user?.dashboardUnlocked) {
-        navigation.replace('OnboardingChallenges');
-      } else {
-        navigation.replace('MainTabs', { screen: 'Dashboard' });
-      }
-    }, 1800);
-
-    return () => clearTimeout(timer);
-  }, [fadeAnim, scaleAnim, isAuthenticated, user, navigation]);
+    // Trigger secure session rehydration from SecureStore
+    initializeAuth();
+  }, [fadeAnim, scaleAnim, initializeAuth]);
 
   return (
     <View style={styles.container}>

@@ -8,7 +8,7 @@
     "build": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json",
     "start": "node dist/src/server.js",
     "typecheck": "node ../../node_modules/typescript/lib/tsc.js --noEmit -p tsconfig.json",
-    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js",
+    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js dist/tests/referral.test.js",
     "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyAtlas.js"
   },
   "dependencies": {

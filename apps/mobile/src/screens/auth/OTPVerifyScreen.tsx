@@ -17,16 +17,18 @@ import { Header } from '../../components/ui/Header';
 import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
+import { sendOtpApi, verifyOtpApi } from '../../services/api/auth.api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerify'>;
 
 export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { mobile, mode } = route.params;
-  const { login } = useAuthStore();
-  const [otp, setOtp] = useState('123456');
+  const { setAuthSession } = useAuthStore();
+  const [otp, setOtp] = useState('');
   const [timer, setTimer] = useState(45);
   const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -36,30 +38,67 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleVerify = () => {
+  const getPurpose = (): 'REGISTRATION' | 'LOGIN' | 'PASSWORD_RESET' => {
+    if (mode === 'SIGNUP') return 'REGISTRATION';
+    if (mode === 'LOGIN') return 'LOGIN';
+    return 'PASSWORD_RESET';
+  };
+
+  const handleVerify = async () => {
     if (otp.length !== 6) {
-      setError('Please enter all 6 digits');
+      setError('Please enter all 6 digits of your verification code');
       return;
     }
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      if (mode === 'SIGNUP') {
-        // New user must complete onboarding challenge
-        navigation.replace('OnboardingChallenges');
-      } else if (mode === 'RESET') {
-        navigation.replace('OTPLogin');
+    setError('');
+
+    try {
+      const response = await verifyOtpApi({
+        mobile: mobile.trim(),
+        otp: otp.trim(),
+        purpose: getPurpose(),
+      });
+
+      if (response.success && response.data?.tokens && response.data?.user) {
+        // Securely persist tokens (declaratively transitions RootNavigator to authenticated stack)
+        await setAuthSession(response.data.user, response.data.tokens);
       } else {
-        // Direct to main tabs
-        navigation.replace('MainTabs', { screen: 'Dashboard' });
+        if (mode === 'RESET') {
+          navigation.replace('OTPLogin');
+        }
       }
-    }, 800);
+    } catch (err: any) {
+      if (err.code === 'MAX_ATTEMPTS_EXCEEDED') {
+        setError('Maximum verification attempts exceeded. Please request a new code.');
+      } else if (err.code === 'INVALID_OTP') {
+        setError(err.message || 'Invalid verification code entered.');
+      } else if (err.code === 'EXPIRED_OR_NOT_FOUND') {
+        setError('Verification code expired or not found. Please request a new code.');
+      } else {
+        setError(err.message || 'Verification failed. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleResend = () => {
-    if (timer > 0) return;
-    setTimer(45);
+  const handleResend = async () => {
+    if (timer > 0 || isResending) return;
+    setIsResending(true);
     setError('');
+
+    try {
+      await sendOtpApi({
+        mobile: mobile.trim(),
+        purpose: getPurpose(),
+      });
+      setTimer(45);
+      setOtp('');
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend code. Please try again.');
+    } finally {
+      setIsResending(false);
+    }
   };
 
   return (
@@ -127,8 +166,14 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
                   Resend OTP in <Text style={styles.timerBold}>{timer}s</Text>
                 </Text>
               ) : (
-                <TouchableOpacity activeOpacity={0.7} onPress={handleResend}>
-                  <Text style={styles.resendLink}>{t('auth.resendOtp')}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={handleResend}
+                  disabled={isResending}
+                >
+                  <Text style={styles.resendLink}>
+                    {isResending ? 'Sending...' : t('auth.resendOtp')}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -229,6 +274,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 12,
     fontWeight: '600',
+    textAlign: 'center',
   },
   verifyBtn: {
     width: '100%',

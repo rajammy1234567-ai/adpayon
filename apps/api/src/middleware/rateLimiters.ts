@@ -1,15 +1,15 @@
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
 
-const isTest = env.NODE_ENV === 'test';
+const isTest = env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
 
 /**
  * Rate limiter for authentication attempts (registration, login).
- * Enforces max 15 requests per 15 minutes per IP.
+ * Enforces max 30 requests per 15 minutes per IP.
  */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isTest ? 1000 : 15,
+  max: isTest ? 2000 : 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -23,11 +23,11 @@ export const authRateLimiter = rateLimit({
 
 /**
  * Strict rate limiter for OTP dispatching.
- * Enforces max 5 OTP requests per 10 minutes per IP.
+ * Enforces max 30 OTP requests per 10 minutes per IP in dev/prod, unlimited in tests.
  */
 export const otpRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: isTest ? 1000 : 5,
+  max: isTest ? 2000 : 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

@@ -20,8 +20,8 @@ export const RankRewardsScreen: React.FC = () => {
 
   const userRank = user?.currentRank || 'SILVER';
   const directs = user?.directReferralsCount || 8;
-  const leftCount = user?.binaryStats.leftCount || 42;
-  const rightCount = user?.binaryStats.rightCount || 38;
+  const leftCount = user?.binaryStats?.leftCount || 42;
+  const rightCount = user?.binaryStats?.rightCount || 38;
 
   return (
     <SafeAreaView style={styles.container}>
