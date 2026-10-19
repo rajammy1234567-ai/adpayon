@@ -165,7 +165,8 @@ export async function apiClient<T>(
       body?.error?.message ||
       body?.message ||
       `Request failed with status ${response.status}`;
-    throw new ApiError(response.status, errorCode, errorMessage, body?.error?.details);
+    const errorDetails = body?.error?.details !== undefined ? body.error.details : body?.data;
+    throw new ApiError(response.status, errorCode, errorMessage, errorDetails);
   }
 
   return body as T;

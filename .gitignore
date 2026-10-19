@@ -33,6 +33,8 @@ build/
 .env.development
 .env.test
 .env.production
+.env.sandbox
+.env.sandbox*
 *.pem
 
 # IDE & OS Files

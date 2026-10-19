@@ -26,12 +26,17 @@ function resolveBackendRoot(startDir: string): string {
   return path.resolve(__dirname, '../../../');
 }
 
-// Load local environment variables from backend project root (.env)
+// Determine target environment file based on ENV_FILE or NODE_ENV/APP_ENV
 const backendRoot = resolveBackendRoot(__dirname);
-const backendEnvPath = path.join(backendRoot, '.env');
+const targetEnvFileName =
+  process.env.ENV_FILE ||
+  (process.env.NODE_ENV === 'sandbox' || process.env.APP_ENV === 'sandbox'
+    ? '.env.sandbox'
+    : '.env');
+const backendEnvPath = path.join(backendRoot, targetEnvFileName);
 
 if (fs.existsSync(backendEnvPath)) {
-  dotenv.config({ path: backendEnvPath });
+  dotenv.config({ path: backendEnvPath, override: true });
 } else {
   // Fallback to default search if explicit backend .env does not exist
   dotenv.config();
@@ -39,7 +44,7 @@ if (fs.existsSync(backendEnvPath)) {
 
 const envSchema = z
   .object({
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    NODE_ENV: z.enum(['development', 'production', 'test', 'sandbox']).default('development'),
     PORT: z
       .string()
       .default('5000')
@@ -102,6 +107,80 @@ const envSchema = z
           code: z.ZodIssueCode.custom,
           path: ['OTP_HMAC_SECRET'],
           message: 'OTP_HMAC_SECRET must be explicitly configured in production',
+        });
+      }
+    }
+
+    if (data.NODE_ENV === 'sandbox') {
+      if (data.PORT !== 5001) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PORT'],
+          message: 'PORT must be strictly set to 5001 in sandbox environment',
+        });
+      }
+      if (data.MONGODB_DB_NAME !== 'adpayon_sandbox') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MONGODB_DB_NAME'],
+          message: 'MONGODB_DB_NAME must be strictly set to adpayon_sandbox in sandbox environment',
+        });
+      }
+      if (!data.MONGODB_URI || data.MONGODB_URI.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MONGODB_URI'],
+          message: 'MONGODB_URI is strictly required in sandbox environment',
+        });
+      } else {
+        if (
+          data.MONGODB_URI.includes('adpayon_dev') ||
+          data.MONGODB_URI.includes('adpayon_test') ||
+          data.MONGODB_URI.includes('adpayon_dev_app') ||
+          data.MONGODB_URI.includes('adpayon_test_app')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['MONGODB_URI'],
+            message: 'MONGODB_URI in sandbox must never reference dev or test databases or credentials',
+          });
+        }
+      }
+      if (data.CORS_ORIGIN === '*') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['CORS_ORIGIN'],
+          message: 'Wildcard CORS (*) is strictly prohibited in sandbox environment',
+        });
+      }
+      if (
+        data.JWT_ACCESS_SECRET === 'adpayon_dev_jwt_access_secret_do_not_use_in_prod' ||
+        data.JWT_ACCESS_SECRET.length < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_ACCESS_SECRET'],
+          message: 'JWT_ACCESS_SECRET must be an isolated, high-entropy secret (>=32 chars) in sandbox',
+        });
+      }
+      if (
+        data.JWT_REFRESH_SECRET === 'adpayon_dev_jwt_refresh_secret_do_not_use_in_prod' ||
+        data.JWT_REFRESH_SECRET.length < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_REFRESH_SECRET'],
+          message: 'JWT_REFRESH_SECRET must be an isolated, high-entropy secret (>=32 chars) in sandbox',
+        });
+      }
+      if (
+        data.OTP_HMAC_SECRET === 'adpayon_dev_otp_hmac_secret_do_not_use_in_prod' ||
+        data.OTP_HMAC_SECRET.length < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OTP_HMAC_SECRET'],
+          message: 'OTP_HMAC_SECRET must be an isolated, high-entropy secret (>=32 chars) in sandbox',
         });
       }
     }

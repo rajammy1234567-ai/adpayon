@@ -62,10 +62,38 @@ export async function connectMongo(): Promise<Connection | null> {
           w: 'majority',
         });
 
+        const activeDb = mongoose.connection.db;
+        const activeDbName = activeDb?.databaseName;
+
+        // Explicit Fail-Closed Database Identity Checks
+        if (env.NODE_ENV === 'sandbox' || env.MONGODB_DB_NAME === 'adpayon_sandbox' || env.PORT === 5001) {
+          if (activeDbName !== 'adpayon_sandbox') {
+            logger.fatal(
+              { activeDbName, expected: 'adpayon_sandbox' },
+              'CRITICAL SECURITY VIOLATION: Sandbox server connected to unexpected database! Failing closed.'
+            );
+            await mongoose.disconnect().catch(() => {});
+            throw new Error(
+              `CRITICAL SECURITY FAILURE: Sandbox server expected 'adpayon_sandbox' but connected to '${activeDbName}'. Terminating.`
+            );
+          }
+        } else if (env.NODE_ENV === 'development' && env.MONGODB_DB_NAME === 'adpayon_dev') {
+          if (activeDbName !== 'adpayon_dev') {
+            logger.fatal(
+              { activeDbName, expected: 'adpayon_dev' },
+              'CRITICAL SECURITY VIOLATION: Development server connected to unexpected database! Failing closed.'
+            );
+            await mongoose.disconnect().catch(() => {});
+            throw new Error(
+              `CRITICAL SECURITY FAILURE: Development server expected 'adpayon_dev' but connected to '${activeDbName}'. Terminating.`
+            );
+          }
+        }
+
         retryCount = 0;
         logger.info(
-          { database: env.MONGODB_DB_NAME },
-          'MongoDB connection established successfully.'
+          { database: activeDbName },
+          'MongoDB connection established and verified successfully.'
         );
         return mongoose.connection;
       } catch (err: unknown) {

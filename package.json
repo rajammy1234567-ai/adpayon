@@ -9,11 +9,17 @@
   ],
   "scripts": {
     "mobile": "npm --workspace=@adpayon/mobile start",
+    "mobile:sandbox": "npm --workspace=@adpayon/mobile run start:sandbox",
+    "mobile:android:sandbox": "npm --workspace=@adpayon/mobile run android:sandbox",
     "api": "npm run --workspace=@adpayon/api dev",
+    "api:sandbox": "npm run --workspace=@adpayon/api dev:sandbox",
     "build:api": "npm run --workspace=@adpayon/api build",
     "typecheck:api": "npm run --workspace=@adpayon/api typecheck",
     "test:api": "npm run --workspace=@adpayon/api test",
+    "verify:sandbox": "npm run --workspace=@adpayon/api verify:sandbox",
+    "bootstrap:admin:sandbox": "npm run --workspace=@adpayon/api bootstrap:admin:sandbox",
     "admin": "npm run --workspace=@adpayon/admin dev",
+    "admin:sandbox": "npm run --workspace=@adpayon/admin dev:sandbox",
     "build:shared": "npm run --workspace=@adpayon/shared build",
     "lint": "npm run --workspaces lint"
   },

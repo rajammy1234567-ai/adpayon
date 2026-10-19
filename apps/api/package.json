@@ -5,11 +5,16 @@
   "main": "dist/src/server.js",
   "scripts": {
     "dev": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --watch dist/src/server.js",
+    "dev:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox --watch dist/src/server.js",
     "build": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json",
     "start": "node dist/src/server.js",
+    "start:sandbox": "node --env-file=.env.sandbox dist/src/server.js",
     "typecheck": "node ../../node_modules/typescript/lib/tsc.js --noEmit -p tsconfig.json",
-    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js dist/tests/referral.test.js",
-    "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyAtlas.js"
+    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js dist/tests/referral.test.js dist/tests/task.test.js dist/tests/adminAuth.test.js dist/tests/taskE2E.test.js dist/tests/sandboxCampaign.test.js",
+    "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyAtlas.js",
+    "verify:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/verifySandboxIsolation.js",
+    "bootstrap:admin": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapAdmin.js",
+    "bootstrap:admin:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/bootstrapAdminSandbox.js"
   },
   "dependencies": {
     "@adpayon/shared": "file:../../packages/shared",
