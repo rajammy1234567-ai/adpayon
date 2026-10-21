@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: adpayon-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build:shared && npm run build:api
+    startCommand: node apps/api/dist/src/server.js
+    healthCheckPath: /api/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: client_staging
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: adpayon_client_staging
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: OTP_HMAC_SECRET
+        sync: false
+      - key: DEV_OTP_ENABLED
+        value: "false"

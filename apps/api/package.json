@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --watch dist/src/server.js",
     "dev:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox --watch dist/src/server.js",
+    "dev:test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.test --watch dist/src/server.js",
     "build": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json",
     "start": "node dist/src/server.js",
     "start:sandbox": "node --env-file=.env.sandbox dist/src/server.js",
+    "start:test": "node --env-file=.env.test dist/src/server.js",
     "typecheck": "node ../../node_modules/typescript/lib/tsc.js --noEmit -p tsconfig.json",
-    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test dist/tests/health.test.js dist/tests/env.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js dist/tests/referral.test.js dist/tests/task.test.js dist/tests/adminAuth.test.js dist/tests/taskE2E.test.js dist/tests/sandboxCampaign.test.js",
-    "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyAtlas.js",
+    "test": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --test --test-concurrency=1 dist/tests/health.test.js dist/tests/env.test.js dist/tests/testEnvStartup.test.js dist/tests/models.test.js dist/tests/password.test.js dist/tests/otp.test.js dist/tests/auth.test.js dist/tests/referral.test.js dist/tests/task.test.js dist/tests/adminAuth.test.js dist/tests/taskE2E.test.js dist/tests/sandboxCampaign.test.js dist/tests/taskConcurrency.test.js dist/tests/diagnostics.test.js dist/tests/candidateTxOrdering.test.js dist/tests/cleanupReconciliation.test.js dist/tests/taskVerificationQueue.test.js dist/tests/taskEngineFoundation.test.js dist/tests/videoWatchTask.test.js dist/tests/articleReadTask.test.js dist/tests/appInstallConversionContract.test.js dist/tests/appInstallConversionWebhook.test.js dist/tests/appInstallTaskRoutingAndDiscovery.test.js",
+    "test:load": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/concurrencyLoadTestHarness.js --",
+    "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyTestDbConnectivity.js",
     "verify:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/verifySandboxIsolation.js",
     "bootstrap:admin": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapAdmin.js",
     "bootstrap:admin:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/bootstrapAdminSandbox.js"

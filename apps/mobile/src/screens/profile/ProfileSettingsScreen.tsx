@@ -20,6 +20,7 @@ import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export const ProfileSettingsScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -34,11 +35,13 @@ export const ProfileSettingsScreen: React.FC = () => {
         text: 'Log Out',
         style: 'destructive',
         onPress: async () => {
+          useDemoStore.getState().exitDemoMode();
           await logout();
         },
       },
     ]);
   };
+
 
   return (
     <SafeAreaView style={styles.container}>

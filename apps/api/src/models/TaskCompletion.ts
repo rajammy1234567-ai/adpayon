@@ -100,6 +100,8 @@ const taskCompletionSchema = new Schema<ITaskCompletion>(
 
 taskCompletionSchema.index({ taskId: 1, userId: 1, clickId: 1 }, { unique: true });
 taskCompletionSchema.index({ userId: 1, createdAt: -1 });
+taskCompletionSchema.index({ userId: 1, completedAt: -1 });
+taskCompletionSchema.index({ taskId: 1, userId: 1, completedAt: -1 });
 taskCompletionSchema.index({ campaignId: 1, createdAt: -1 });
 taskCompletionSchema.index({ status: 1, createdAt: -1 });
 

@@ -9,3 +9,5 @@ export * from './TaskAssignment';
 export * from './TaskCompletion';
 export * from './TaskEvent';
 export * from './VerificationEvidence';
+export * from './VideoPlaybackSession';
+export * from './ArticleReadingSession';

@@ -813,6 +813,21 @@ describe('Admin Task Engine & Verification Integration Tests', () => {
     assert.ok(body.data.completions.length >= 1);
     assert.ok(body.data.completions[0].rewardPoints > 0);
     assert.ok(body.data.pagination.total >= 1);
+    assert.ok(body.data.summary);
+    assert.equal(typeof body.data.summary.totalCompleted, 'number');
+    assert.equal(typeof body.data.summary.totalRewardPoints, 'number');
+    assert.equal(body.data.summary.totalCompleted, body.data.pagination.total);
+    assert.ok(body.data.summary.totalRewardPoints > 0);
+
+    // Verify dedicated GET /api/tasks/summary endpoint
+    const summaryRes = await fetch(`${baseUrl}/api/tasks/summary`, {
+      headers: { Authorization: `Bearer ${user1Token}` },
+    });
+    assert.equal(summaryRes.status, 200);
+    const summaryBody = (await summaryRes.json()) as any;
+    assert.equal(summaryBody.success, true);
+    assert.equal(summaryBody.data.totalCompleted, body.data.summary.totalCompleted);
+    assert.equal(summaryBody.data.totalRewardPoints, body.data.summary.totalRewardPoints);
   });
 
   it('20. GET /api/tasks/:id/status returns active assignment status for user', async (t) => {

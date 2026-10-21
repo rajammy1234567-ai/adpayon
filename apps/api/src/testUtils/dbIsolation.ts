@@ -13,6 +13,8 @@ import {
   TaskEvent,
   VerificationEvidence,
   AdminAuditLog,
+  VideoPlaybackSession,
+  ArticleReadingSession,
 } from '../models';
 
 export interface TestDbIsolationCheck {
@@ -68,11 +70,16 @@ export async function assertTestDatabaseIsolation(): Promise<TestDbIsolationChec
       await mongoose.disconnect();
     }
 
-    await mongoose.connect(mongoUri, {
+    const connectOptions: mongoose.ConnectOptions = {
       dbName: targetDbName,
       serverSelectionTimeoutMS: 3000,
       connectTimeoutMS: 4000,
-    });
+    };
+    if (process.env.LOAD_TEST_DIAGNOSTICS === 'true') {
+      (connectOptions as any).monitorCommands = true;
+    }
+
+    await mongoose.connect(mongoUri, connectOptions);
 
     const activeDbName = mongoose.connection.db?.databaseName;
     if (
@@ -128,6 +135,8 @@ export class TestOwnershipTracker {
   public eventIds = new Set<string>();
   public evidenceIds = new Set<string>();
   public auditLogIds = new Set<string>();
+  public videoSessionIds = new Set<string>();
+  public articleSessionIds = new Set<string>();
 
   trackUser(userId: string | Types.ObjectId, mobile?: string): void {
     const idStr = userId.toString();
@@ -139,6 +148,10 @@ export class TestOwnershipTracker {
 
   trackSession(sessionId: string | Types.ObjectId): void {
     this.sessionIds.add(sessionId.toString());
+  }
+
+  trackVideoSession(sessionId: string | Types.ObjectId): void {
+    this.videoSessionIds.add(sessionId.toString());
   }
 
   trackCampaign(campaignId: string | Types.ObjectId): void {
@@ -169,9 +182,54 @@ export class TestOwnershipTracker {
     this.auditLogIds.add(logId.toString());
   }
 
+  trackArticleSession(sessionId: string | Types.ObjectId): void {
+    this.articleSessionIds.add(sessionId.toString());
+  }
+
+  /**
+   * Returns true if any synthetic database records have been tracked.
+   */
+  hasTrackedRecords(): boolean {
+    return (
+      this.userIds.size > 0 ||
+      this.mobiles.size > 0 ||
+      this.sessionIds.size > 0 ||
+      this.campaignIds.size > 0 ||
+      this.taskIds.size > 0 ||
+      this.assignmentIds.size > 0 ||
+      this.completionIds.size > 0 ||
+      this.eventIds.size > 0 ||
+      this.evidenceIds.size > 0 ||
+      this.auditLogIds.size > 0 ||
+      this.videoSessionIds.size > 0 ||
+      this.articleSessionIds.size > 0
+    );
+  }
+
+  /**
+   * Exports full recovery information of all tracked synthetic IDs.
+   */
+  getRecoveryInfo() {
+    return {
+      userIds: Array.from(this.userIds),
+      mobiles: Array.from(this.mobiles),
+      taskIds: Array.from(this.taskIds),
+      campaignIds: Array.from(this.campaignIds),
+      assignmentIds: Array.from(this.assignmentIds),
+      completionIds: Array.from(this.completionIds),
+      eventIds: Array.from(this.eventIds),
+      evidenceIds: Array.from(this.evidenceIds),
+      sessionIds: Array.from(this.sessionIds),
+      auditLogIds: Array.from(this.auditLogIds),
+      videoSessionIds: Array.from(this.videoSessionIds),
+      articleSessionIds: Array.from(this.articleSessionIds),
+    };
+  }
+
   /**
    * Safely purges ONLY tracked records created by the current test suite.
-   * Fails closed if no records are tracked or if connected to an unsafe database.
+   * If no records were tracked, performs an immediate safe no-op.
+   * If records are tracked, strictly fails closed if connected to an unsafe or unverified database.
    */
   async safeCleanup(): Promise<{
     deletedUsers: number;
@@ -182,6 +240,19 @@ export class TestOwnershipTracker {
     deletedAssignments: number;
     deletedCompletions: number;
   }> {
+    // If no records were created or tracked, cleanup is a safe no-op
+    if (!this.hasTrackedRecords()) {
+      return {
+        deletedUsers: 0,
+        deletedSessions: 0,
+        deletedOtps: 0,
+        deletedCampaigns: 0,
+        deletedTasks: 0,
+        deletedAssignments: 0,
+        deletedCompletions: 0,
+      };
+    }
+
     const currentDb = mongoose.connection.db?.databaseName;
     if (
       currentDb === 'adpayon_dev' ||
@@ -226,6 +297,28 @@ export class TestOwnershipTracker {
       });
     }
 
+    // Discover any unacknowledged or late-committed TaskCompletion records created for tracked tasks, assignments, or users
+    if (this.taskIds.size > 0 || this.assignmentIds.size > 0 || this.userIds.size > 0) {
+      const tIds = Array.from(this.taskIds).map((id) => new Types.ObjectId(id));
+      const aIds = Array.from(this.assignmentIds).map((id) => new Types.ObjectId(id));
+      const uIds = Array.from(this.userIds).map((id) => new Types.ObjectId(id));
+
+      const orClauses: Record<string, any>[] = [];
+      if (tIds.length > 0) orClauses.push({ taskId: { $in: tIds } });
+      if (aIds.length > 0) orClauses.push({ assignmentId: { $in: aIds } });
+      if (uIds.length > 0) orClauses.push({ userId: { $in: uIds } });
+
+      if (orClauses.length > 0) {
+        const unacknowledgedCompletions = await TaskCompletion.find(
+          { $or: orClauses },
+          { _id: 1 }
+        ).lean();
+        for (const c of unacknowledgedCompletions) {
+          this.completionIds.add(c._id.toString());
+        }
+      }
+    }
+
     // Purge task completions & assignments
     if (this.completionIds.size > 0) {
       const cIds = Array.from(this.completionIds).map((id) => new Types.ObjectId(id));
@@ -251,6 +344,28 @@ export class TestOwnershipTracker {
       deletedCampaigns = cmpRes.deletedCount || 0;
     }
 
+    // Derive exact IDs of associated telemetry events and evidence from tracked assignments & users
+    if (this.assignmentIds.size > 0 || this.userIds.size > 0) {
+      const aIds = Array.from(this.assignmentIds).map((id) => new Types.ObjectId(id));
+      const uIds = Array.from(this.userIds).map((id) => new Types.ObjectId(id));
+
+      const orphanedEvents = await TaskEvent.find(
+        { $or: [{ assignmentId: { $in: aIds } }, { userId: { $in: uIds } }] },
+        { _id: 1 }
+      ).lean();
+      for (const ev of orphanedEvents) {
+        this.eventIds.add(ev._id.toString());
+      }
+
+      const orphanedEvidence = await VerificationEvidence.find(
+        { $or: [{ assignmentId: { $in: aIds } }, { userId: { $in: uIds } }] },
+        { _id: 1 }
+      ).lean();
+      for (const evd of orphanedEvidence) {
+        this.evidenceIds.add(evd._id.toString());
+      }
+    }
+
     if (this.eventIds.size > 0) {
       const evIds = Array.from(this.eventIds).map((id) => new Types.ObjectId(id));
       await TaskEvent.deleteMany({ _id: { $in: evIds } });
@@ -266,6 +381,91 @@ export class TestOwnershipTracker {
       await AdminAuditLog.deleteMany({ _id: { $in: logIds } });
     }
 
+    // Discover any unacknowledged VideoPlaybackSession records created for tracked tasks, assignments, or users
+    if (this.taskIds.size > 0 || this.assignmentIds.size > 0 || this.userIds.size > 0) {
+      const tIds = Array.from(this.taskIds).map((id) => new Types.ObjectId(id));
+      const aIds = Array.from(this.assignmentIds).map((id) => new Types.ObjectId(id));
+      const uIds = Array.from(this.userIds).map((id) => new Types.ObjectId(id));
+
+      const orClauses: Record<string, any>[] = [];
+      if (tIds.length > 0) orClauses.push({ taskId: { $in: tIds } });
+      if (aIds.length > 0) orClauses.push({ assignmentId: { $in: aIds } });
+      if (uIds.length > 0) orClauses.push({ userId: { $in: uIds } });
+
+      if (orClauses.length > 0) {
+        const matchingVideoSessions = await VideoPlaybackSession.find(
+          { $or: orClauses },
+          { _id: 1, sessionId: 1 }
+        ).lean();
+        for (const vs of matchingVideoSessions) {
+          this.videoSessionIds.add(vs._id.toString());
+          if (vs.sessionId) {
+            this.videoSessionIds.add(vs.sessionId);
+          }
+        }
+      }
+    }
+
+    if (this.videoSessionIds.size > 0) {
+      const vsIdsOrCodes = Array.from(this.videoSessionIds);
+      const vsObjIds = vsIdsOrCodes.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+      await VideoPlaybackSession.deleteMany({
+        $or: [{ _id: { $in: vsObjIds } }, { sessionId: { $in: vsIdsOrCodes } }],
+      });
+    }
+
+    // Discover any unacknowledged ArticleReadingSession records created for tracked tasks, assignments, or users
+    if (this.taskIds.size > 0 || this.assignmentIds.size > 0 || this.userIds.size > 0) {
+      const tIds = Array.from(this.taskIds).map((id) => new Types.ObjectId(id));
+      const aIds = Array.from(this.assignmentIds).map((id) => new Types.ObjectId(id));
+      const uIds = Array.from(this.userIds).map((id) => new Types.ObjectId(id));
+
+      const orClauses: Record<string, any>[] = [];
+      if (tIds.length > 0) orClauses.push({ taskId: { $in: tIds } });
+      if (aIds.length > 0) orClauses.push({ assignmentId: { $in: aIds } });
+      if (uIds.length > 0) orClauses.push({ userId: { $in: uIds } });
+
+      if (orClauses.length > 0) {
+        const matchingArticleSessions = await ArticleReadingSession.find(
+          { $or: orClauses },
+          { _id: 1, sessionId: 1 }
+        ).lean();
+        for (const as of matchingArticleSessions) {
+          this.articleSessionIds.add(as._id.toString());
+          if (as.sessionId) {
+            this.articleSessionIds.add(as.sessionId);
+          }
+        }
+      }
+    }
+
+    if (this.articleSessionIds.size > 0) {
+      const asIdsOrCodes = Array.from(this.articleSessionIds);
+      const asObjIds = asIdsOrCodes.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+      await ArticleReadingSession.deleteMany({
+        $or: [{ _id: { $in: asObjIds } }, { sessionId: { $in: asIdsOrCodes } }],
+      });
+    }
+
+    // Post-cleanup residual verification: guarantee 0 orphaned records remain for tracked entities
+    if (this.taskIds.size > 0 || this.assignmentIds.size > 0 || this.userIds.size > 0) {
+      const tIds = Array.from(this.taskIds).map((id) => new Types.ObjectId(id));
+      const aIds = Array.from(this.assignmentIds).map((id) => new Types.ObjectId(id));
+      const uIds = Array.from(this.userIds).map((id) => new Types.ObjectId(id));
+
+      const orClauses: Record<string, any>[] = [];
+      if (tIds.length > 0) orClauses.push({ taskId: { $in: tIds } });
+      if (aIds.length > 0) orClauses.push({ assignmentId: { $in: aIds } });
+      if (uIds.length > 0) orClauses.push({ userId: { $in: uIds } });
+
+      if (orClauses.length > 0) {
+        const remainingCompletions = await TaskCompletion.countDocuments({ $or: orClauses });
+        if (remainingCompletions > 0) {
+          throw new Error(`CLEANUP BLOCKER: ${remainingCompletions} TaskCompletion record(s) remained in '${currentDb}' after cleanup.`);
+        }
+      }
+    }
+
     this.userIds.clear();
     this.mobiles.clear();
     this.sessionIds.clear();
@@ -276,6 +476,7 @@ export class TestOwnershipTracker {
     this.eventIds.clear();
     this.evidenceIds.clear();
     this.auditLogIds.clear();
+    this.videoSessionIds.clear();
 
     return {
       deletedUsers,

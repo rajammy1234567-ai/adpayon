@@ -37,7 +37,8 @@ function resolveApiBaseUrl(): string {
   }
 
   // Strict production safety assertion: Must use HTTPS in production
-  if (!__DEV__ && !resolved.startsWith('https://')) {
+  const isProductionRelease = !__DEV__ && process.env.EXPO_PUBLIC_APP_ENV === 'production';
+  if (isProductionRelease && !resolved.startsWith('https://')) {
     throw new Error('Security Violation: Production mobile API must use HTTPS');
   }
 

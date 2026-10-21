@@ -32,7 +32,9 @@ const targetEnvFileName =
   process.env.ENV_FILE ||
   (process.env.NODE_ENV === 'sandbox' || process.env.APP_ENV === 'sandbox'
     ? '.env.sandbox'
-    : '.env');
+    : (process.env.NODE_ENV === 'test' || process.env.APP_ENV === 'test'
+      ? '.env.test'
+      : '.env'));
 const backendEnvPath = path.join(backendRoot, targetEnvFileName);
 
 if (fs.existsSync(backendEnvPath)) {
@@ -45,6 +47,7 @@ if (fs.existsSync(backendEnvPath)) {
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'production', 'test', 'sandbox']).default('development'),
+    APP_ENV: z.enum(['development', 'production', 'test', 'sandbox', 'client_staging', 'staging']).optional(),
     PORT: z
       .string()
       .default('5000')
@@ -184,7 +187,100 @@ const envSchema = z
         });
       }
     }
+
+    if (data.APP_ENV === 'test') {
+      if (data.MONGODB_DB_NAME !== 'adpayon_test') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MONGODB_DB_NAME'],
+          message: 'MONGODB_DB_NAME must be strictly set to adpayon_test when APP_ENV is test',
+        });
+      }
+      if (!data.MONGODB_URI || data.MONGODB_URI.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MONGODB_URI'],
+          message: 'MONGODB_URI is strictly required when APP_ENV is test',
+        });
+      } else {
+        if (
+          data.MONGODB_URI.includes('adpayon_dev') ||
+          data.MONGODB_URI.includes('adpayon_sandbox') ||
+          data.MONGODB_URI.includes('adpayon_dev_app') ||
+          data.MONGODB_URI.includes('adpayon_sandbox_app')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['MONGODB_URI'],
+            message: 'MONGODB_URI in test mode must never reference dev or sandbox databases or credentials',
+          });
+        }
+      }
+    }
+
+    if (data.APP_ENV === 'client_staging' || data.APP_ENV === 'staging') {
+      if (data.MONGODB_DB_NAME !== 'adpayon_client_staging') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MONGODB_DB_NAME'],
+          message: 'MONGODB_DB_NAME must be strictly set to adpayon_client_staging in client_staging environment',
+        });
+      }
+      if (!data.MONGODB_URI || data.MONGODB_URI.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MONGODB_URI'],
+          message: 'MONGODB_URI is strictly required in client_staging environment',
+        });
+      } else {
+        if (
+          data.MONGODB_URI.includes('adpayon_dev') ||
+          data.MONGODB_URI.includes('adpayon_sandbox') ||
+          data.MONGODB_URI.includes('adpayon_test') ||
+          data.MONGODB_URI.includes('adpayon_dev_app') ||
+          data.MONGODB_URI.includes('adpayon_sandbox_app') ||
+          data.MONGODB_URI.includes('adpayon_test_app')
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['MONGODB_URI'],
+            message: 'MONGODB_URI in client_staging must never reference dev, test, or sandbox databases or credentials',
+          });
+        }
+      }
+      if (
+        data.JWT_ACCESS_SECRET === 'adpayon_dev_jwt_access_secret_do_not_use_in_prod' ||
+        data.JWT_ACCESS_SECRET.length < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_ACCESS_SECRET'],
+          message: 'JWT_ACCESS_SECRET must be an isolated, high-entropy secret (>=32 chars) in client_staging',
+        });
+      }
+      if (
+        data.JWT_REFRESH_SECRET === 'adpayon_dev_jwt_refresh_secret_do_not_use_in_prod' ||
+        data.JWT_REFRESH_SECRET.length < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_REFRESH_SECRET'],
+          message: 'JWT_REFRESH_SECRET must be an isolated, high-entropy secret (>=32 chars) in client_staging',
+        });
+      }
+      if (
+        data.OTP_HMAC_SECRET === 'adpayon_dev_otp_hmac_secret_do_not_use_in_prod' ||
+        data.OTP_HMAC_SECRET.length < 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OTP_HMAC_SECRET'],
+          message: 'OTP_HMAC_SECRET must be an isolated, high-entropy secret (>=32 chars) in client_staging',
+        });
+      }
+    }
   });
+
 
 const parsed = envSchema.safeParse(process.env);
 

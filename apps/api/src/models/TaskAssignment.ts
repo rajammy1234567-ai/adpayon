@@ -14,6 +14,8 @@ export interface ITaskAssignment extends Document {
   dwellTimeAccumulatedSeconds: number;
   lastHeartbeatAt?: Date;
   completedAt?: Date;
+  hasOpenedStore?: boolean;
+  storeVisitedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +69,13 @@ const taskAssignmentSchema = new Schema<ITaskAssignment>(
       type: Date,
     },
     completedAt: {
+      type: Date,
+    },
+    hasOpenedStore: {
+      type: Boolean,
+      default: false,
+    },
+    storeVisitedAt: {
       type: Date,
     },
   },

@@ -13,6 +13,9 @@ import { Button } from '../../components/ui/Button';
 import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useAuthStore } from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
+import { DEMO_USER } from '../../constants/demoData';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Intro'>;
 
@@ -52,6 +55,11 @@ export const IntroScreen: React.FC<Props> = ({ navigation }) => {
     } else {
       navigation.navigate('Signup');
     }
+  };
+
+  const handleEnterDemo = () => {
+    useDemoStore.getState().enterDemoMode();
+    useAuthStore.getState().login(DEMO_USER, 'demo_access_token');
   };
 
   return (
@@ -115,10 +123,19 @@ export const IntroScreen: React.FC<Props> = ({ navigation }) => {
           variant="secondary"
           size="md"
         />
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handleEnterDemo}
+          style={styles.demoBtn}
+        >
+          <Text style={styles.demoBtnText}>🚀 Explore Client Demo Mode (Sample Data)</Text>
+          <Text style={styles.demoBtnSub}>Offline preview • No login required</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {
@@ -219,5 +236,27 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     marginBottom: 12,
+  },
+  demoBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: THEME.borderRadius.lg,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1.5,
+    borderColor: THEME.colors.emerald,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoBtnText: {
+    color: THEME.colors.emerald,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  demoBtnSub: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
   },
 });

@@ -28,6 +28,7 @@ import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useWalletStore } from '../../store/walletStore';
+import { useDemoStore } from '../../store/demoStore';
 
 const FILTERS: { key: SourceCategory; label: string }[] = [
   { key: 'ALL', label: 'All' },
@@ -55,7 +56,16 @@ export const WalletScreen: React.FC = () => {
     return tx.sourceCategory === filter;
   });
 
+  const isDemoMode = useDemoStore((s) => s.isDemoMode);
+
   const handleOpenWithdraw = () => {
+    if (isDemoMode) {
+      Alert.alert(
+        'Demo Mode (Sample Data)',
+        'Real withdrawals, payments, and financial write actions are disabled in client demo mode. Balance figures are mock values for demonstration purposes only.'
+      );
+      return;
+    }
     if (!user?.isKycVerified) {
       Alert.alert(
         'KYC Required',
@@ -70,6 +80,7 @@ export const WalletScreen: React.FC = () => {
     setWithdrawError('');
     setIsWithdrawModalVisible(true);
   };
+
 
   const handleConfirmWithdrawal = () => {
     const inr = parseFloat(withdrawAmount);
@@ -161,6 +172,15 @@ export const WalletScreen: React.FC = () => {
       />
 
       <View style={styles.body}>
+        {isDemoMode && (
+          <View style={styles.demoWarningBox}>
+            <Text style={styles.demoWarningTitle}>⚠️ DEMO MODE: SAMPLE LEDGER DATA</Text>
+            <Text style={styles.demoWarningText}>
+              Mock INR balances are not real funds. Real payment requests, claims, and bank transfers are disabled.
+            </Text>
+          </View>
+        )}
+
         {/* Wallet Balance Card */}
         <Card variant="elevated" style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
@@ -520,4 +540,25 @@ const styles = StyleSheet.create({
   confirmBtn: {
     marginTop: 8,
   },
+  demoWarningBox: {
+    padding: 12,
+    borderRadius: THEME.borderRadius.md,
+    backgroundColor: 'rgba(234, 179, 8, 0.12)',
+    borderWidth: 1,
+    borderColor: THEME.colors.gold,
+    marginBottom: 16,
+  },
+  demoWarningTitle: {
+    color: THEME.colors.goldLight,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  demoWarningText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 16,
+  },
 });
+

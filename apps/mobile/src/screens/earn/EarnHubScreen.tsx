@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Badge, BadgeVariant } from '../../components/ui/Badge';
@@ -23,6 +23,11 @@ import { Header } from '../../components/ui/Header';
 import { Modal } from '../../components/ui/Modal';
 import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
+import {
+  resolveTaskNavigation,
+  isLegacyModalAllowed,
+  getTaskActionButtonLabel,
+} from '../../utils/taskNavigation';
 import {
   getTaskFeedApi,
   getTaskHistoryApi,
@@ -34,20 +39,35 @@ import {
   TaskAssignmentResponse,
   TaskCompletionItem,
   TaskFeedItem,
+  TaskHistoryPagination,
+  TaskSummaryData,
 } from '../../services/api/task.api';
+import { useDemoStore } from '../../store/demoStore';
+
 
 export const EarnHubScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isDemoMode = useDemoStore((s) => s.isDemoMode);
 
   const [activeTab, setActiveTab] = useState<'feed' | 'history'>('feed');
   const [tasks, setTasks] = useState<TaskFeedItem[]>([]);
   const [history, setHistory] = useState<TaskCompletionItem[]>([]);
+  const [summary, setSummary] = useState<TaskSummaryData>({
+    totalCompleted: 0,
+    totalRewardPoints: 0,
+  });
+  const [historyPagination, setHistoryPagination] = useState<TaskHistoryPagination | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+
+  // Request sequencing and race prevention
+  const requestIdRef = useRef(0);
 
   const [activeTask, setActiveTask] = useState<TaskFeedItem | null>(null);
   const [activeAssignment, setActiveAssignment] = useState<TaskAssignmentResponse | null>(null);
@@ -115,51 +135,104 @@ export const EarnHubScreen: React.FC = () => {
     return requiredDwellSeconds;
   };
 
-  // Summary counts
-  const totalPromotionalPointsEarned = history.reduce((sum, item) => sum + (item.rewardPoints || 0), 0);
+  /**
+   * Authoritative synchronized refresh of both live feed and completion history/summary.
+   * Uses monotonic request sequencing to prevent stale-response race conditions.
+   */
+  const refreshAll = useCallback(async (isUserPull = false) => {
+    if (isUserPull) {
+      setIsRefreshing(true);
+    }
+    const currentReqId = ++requestIdRef.current;
 
-  const fetchFeed = useCallback(async () => {
-    setFeedError(null);
     try {
-      const res = await getTaskFeedApi();
-      if (res.success && res.data) {
-        setTasks(res.data.tasks || []);
+      const [feedResult, historyResult] = await Promise.allSettled([
+        getTaskFeedApi(),
+        getTaskHistoryApi(1, 20),
+      ]);
+
+      // Guard against stale-response race conditions
+      if (currentReqId !== requestIdRef.current) {
+        return;
       }
-    } catch (err: any) {
-      setFeedError(err.message || 'Unable to load task feed');
+
+      // 1. Process feed response
+      if (feedResult.status === 'fulfilled') {
+        const res = feedResult.value;
+        if (res.success && res.data) {
+          setTasks(res.data.tasks || []);
+          setFeedError(null);
+        } else {
+          setFeedError('Unable to load task feed');
+        }
+      } else {
+        setFeedError(feedResult.reason?.message || 'Unable to load task feed');
+      }
+
+      // 2. Process history & summary response
+      if (historyResult.status === 'fulfilled') {
+        const res = historyResult.value;
+        if (res.success && res.data) {
+          const completions = res.data.completions || [];
+          setHistory(completions);
+          setHistoryPagination(res.data.pagination);
+          setHistoryPage(1);
+
+          if (res.data.summary) {
+            setSummary(res.data.summary);
+          } else if (res.data.pagination) {
+            setSummary({
+              totalCompleted: res.data.pagination.total,
+              totalRewardPoints: completions.reduce((sum, item) => sum + (item.rewardPoints || 0), 0),
+            });
+          }
+          setHistoryError(null);
+        } else {
+          setHistoryError('Unable to load task history');
+        }
+      } else {
+        setHistoryError(historyResult.reason?.message || 'Unable to load task history');
+      }
     } finally {
-      setIsLoadingFeed(false);
-      setIsRefreshing(false);
+      if (currentReqId === requestIdRef.current) {
+        setIsLoadingFeed(false);
+        setIsLoadingHistory(false);
+        setIsRefreshing(false);
+      }
     }
   }, []);
 
-  const fetchHistory = useCallback(async () => {
-    setHistoryError(null);
-    setIsLoadingHistory(true);
-    try {
-      const res = await getTaskHistoryApi(1, 30);
-      if (res.success && res.data) {
-        setHistory(res.data.completions || []);
-      }
-    } catch (err: any) {
-      setHistoryError(err.message || 'Unable to load task history');
-    } finally {
-      setIsLoadingHistory(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchFeed();
-    fetchHistory();
-  }, [fetchFeed, fetchHistory]);
+  // Synchronize when Earn Hub regains navigation focus (mount & return from task screens)
+  useFocusEffect(
+    useCallback(() => {
+      refreshAll(false);
+    }, [refreshAll])
+  );
 
   const handleRefresh = () => {
-    setIsRefreshing(true);
-    if (activeTab === 'feed') {
-      fetchFeed();
-    } else {
-      fetchHistory();
+    refreshAll(true);
+  };
+
+  const handleLoadMoreHistory = async () => {
+    if (isLoadingMoreHistory || !historyPagination || historyPage >= historyPagination.pages) {
+      return;
+    }
+    setIsLoadingMoreHistory(true);
+    try {
+      const nextPage = historyPage + 1;
+      const res = await getTaskHistoryApi(nextPage, 20);
+      if (res.success && res.data) {
+        setHistory((prev) => [...prev, ...(res.data.completions || [])]);
+        setHistoryPagination(res.data.pagination);
+        setHistoryPage(nextPage);
+        if (res.data.summary) {
+          setSummary(res.data.summary);
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('History Error', err.message || 'Failed to load additional history records.');
+    } finally {
+      setIsLoadingMoreHistory(false);
     }
   };
 
@@ -196,6 +269,31 @@ export const EarnHubScreen: React.FC = () => {
 
   const handleStartOrResumeTask = async (task: TaskFeedItem) => {
     if (startingTaskId !== null) return; // Prevent concurrent start requests or double-tap
+
+    // 1. Authoritative resolution of specialized task navigation
+    const dest = resolveTaskNavigation(task);
+    if (dest.screen === 'VideoWatchTask') {
+      navigation.navigate('VideoWatchTask', dest.params);
+      return;
+    }
+    if (dest.screen === 'ArticleReadTask') {
+      navigation.navigate('ArticleReadTask', dest.params);
+      return;
+    }
+    if (dest.screen === 'AppInstallTask') {
+      navigation.navigate('AppInstallTask', dest.params);
+      return;
+    }
+
+    // Safety guard: specialized tasks must never proceed to generic modal
+    if (!isLegacyModalAllowed(task.category)) {
+      Alert.alert(
+        'Task Unavailable',
+        'This specialized task requires dedicated verification and cannot be started from the generic modal.'
+      );
+      return;
+    }
+
     setStartingTaskId(task.id);
 
     try {
@@ -204,7 +302,7 @@ export const EarnHubScreen: React.FC = () => {
         // Expiry guard
         if (new Date(task.activeAssignment.expiresAt).getTime() <= Date.now()) {
           Alert.alert('Assignment Expired', 'Your previous task assignment has expired. Refreshing feed...');
-          await fetchFeed();
+          await refreshAll(false);
           return;
         }
 
@@ -295,6 +393,20 @@ export const EarnHubScreen: React.FC = () => {
         let dwellTimeAccumulatedSeconds = details.dwellTimeAccumulatedSeconds || 0;
         let remainingDwellSeconds = details.remainingDwellSeconds;
 
+        // If specialized task, route directly to dedicated screen with resolved assignmentId
+        if (!isLegacyModalAllowed(task.category)) {
+          const dest = resolveTaskNavigation({
+            ...task,
+            activeAssignment: { id: assignmentId || task.activeAssignment?.id || '' },
+          });
+          if (dest.screen === 'VideoWatchTask') {
+            navigation.navigate('VideoWatchTask', dest.params);
+          } else if (dest.screen === 'ArticleReadTask') {
+            navigation.navigate('ArticleReadTask', dest.params);
+          }
+          return;
+        }
+
         // If backend details were somehow missing, fetch fresh status from server
         if (!assignmentId || !clickId) {
           try {
@@ -316,7 +428,7 @@ export const EarnHubScreen: React.FC = () => {
         // Check expiry
         if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
           Alert.alert('Assignment Expired', 'Your previous task assignment has expired. Refreshing feed...');
-          await fetchFeed();
+          await refreshAll(false);
           return;
         }
 
@@ -379,6 +491,14 @@ export const EarnHubScreen: React.FC = () => {
 
   const handleVerifyFirstPartyAction = async () => {
     if (!activeTask) return;
+    if (!isLegacyModalAllowed(activeTask.category)) {
+      Alert.alert(
+        'Invalid Verification',
+        'Specialized tasks must be verified on their dedicated task screen.'
+      );
+      setIsTaskModalVisible(false);
+      return;
+    }
     setIsVerifying(true);
 
     try {
@@ -408,8 +528,7 @@ export const EarnHubScreen: React.FC = () => {
           [{ text: 'Great!', onPress: () => {} }]
         );
         // Refresh live feed and history
-        fetchFeed();
-        fetchHistory();
+        refreshAll(false);
       }
     } catch (err: any) {
       Alert.alert(
@@ -440,6 +559,12 @@ export const EarnHubScreen: React.FC = () => {
     switch (category) {
       case 'IN_APP_ACTION':
         return { label: 'In-App Action', variant: 'cyan' as BadgeVariant, emoji: '📱' };
+      case 'VIDEO_WATCH':
+        return { label: 'Video Watch', variant: 'gold' as BadgeVariant, emoji: '🎬' };
+      case 'APP_INSTALL':
+        return { label: 'App Install', variant: 'emerald' as BadgeVariant, emoji: '📲' };
+      case 'ARTICLE_READ':
+        return { label: 'Article Read', variant: 'cyan' as BadgeVariant, emoji: '📰' };
       case 'PARTNER_WEBHOOK':
         return { label: 'Partner Offer', variant: 'gold' as BadgeVariant, emoji: '🔗' };
       case 'SURVEY':
@@ -481,6 +606,15 @@ export const EarnHubScreen: React.FC = () => {
         subtitle="Complete advertiser tasks & earn promotional points"
       />
 
+      {isDemoMode && (
+        <View style={styles.demoBanner}>
+          <Text style={styles.demoBannerTitle}>🚀 CLIENT DEMO MODE — SAMPLE DATA</Text>
+          <Text style={styles.demoBannerDesc}>
+            Interactive client demo preview. Tasks and rewards run offline with sample data. No live databases modified.
+          </Text>
+        </View>
+      )}
+
       {/* Overview Metric Banner */}
       <View style={styles.metricsContainer}>
         <Card variant="gold" style={styles.metricsCard}>
@@ -492,13 +626,13 @@ export const EarnHubScreen: React.FC = () => {
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Completed</Text>
-              <Text style={styles.metricValue}>{history.length}</Text>
+              <Text style={styles.metricValue}>{summary.totalCompleted}</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Promotional Points</Text>
               <Text style={[styles.metricValue, { color: THEME.colors.goldLight }]}>
-                {totalPromotionalPointsEarned} <Text style={styles.ptsUnit}>PTS</Text>
+                {summary.totalRewardPoints} <Text style={styles.ptsUnit}>PTS</Text>
               </Text>
             </View>
           </View>
@@ -526,7 +660,7 @@ export const EarnHubScreen: React.FC = () => {
             style={[styles.tabButton, activeTab === 'history' && styles.tabButtonActive]}
           >
             <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
-              My History ({history.length})
+              My History ({summary.totalCompleted})
             </Text>
           </TouchableOpacity>
         </View>
@@ -558,7 +692,7 @@ export const EarnHubScreen: React.FC = () => {
               <Text style={styles.errorSub}>{feedError}</Text>
               <Button
                 title="Retry Connection"
-                onPress={fetchFeed}
+                onPress={() => refreshAll(false)}
                 variant="outline"
                 size="sm"
                 style={styles.retryBtn}
@@ -573,7 +707,7 @@ export const EarnHubScreen: React.FC = () => {
               </Text>
               <Button
                 title="Refresh Feed"
-                onPress={fetchFeed}
+                onPress={() => refreshAll(false)}
                 variant="outline"
                 size="sm"
                 style={styles.retryBtn}
@@ -585,74 +719,63 @@ export const EarnHubScreen: React.FC = () => {
               const ver = getVerificationBadge(task.verificationMethod);
 
               return (
-                <Card
+                <TouchableOpacity
                   key={task.id}
-                  variant={task.hasActiveAssignment ? 'emerald' : task.isEligible ? 'default' : 'glass'}
-                  style={styles.taskCard}
+                  activeOpacity={task.isEligible ? 0.85 : 1}
+                  onPress={() => {
+                    if (task.isEligible) {
+                      handleStartOrResumeTask(task);
+                    }
+                  }}
+                  disabled={!task.isEligible || (startingTaskId !== null && startingTaskId !== task.id)}
                 >
-                  <View style={styles.taskHeader}>
-                    <View style={styles.badgesRow}>
-                      <Badge label={cat.label} variant={cat.variant} />
-                      <Badge label={ver.label} variant={ver.variant} />
-                      {task.hasActiveAssignment ? (
-                        <Badge label="In Progress" variant="gold" />
-                      ) : null}
+                  <Card
+                    variant={task.hasActiveAssignment ? 'emerald' : task.isEligible ? 'default' : 'glass'}
+                    style={styles.taskCard}
+                  >
+                    <View style={styles.taskHeader}>
+                      <View style={styles.badgesRow}>
+                        <Badge label={cat.label} variant={cat.variant} />
+                        <Badge label={ver.label} variant={ver.variant} />
+                        {task.hasActiveAssignment ? (
+                          <Badge label="In Progress" variant="gold" />
+                        ) : null}
+                      </View>
+                      <View style={styles.rewardChip}>
+                        <Text style={styles.rewardChipText}>+{task.rewardPoints} PTS</Text>
+                      </View>
                     </View>
-                    <View style={styles.rewardChip}>
-                      <Text style={styles.rewardChipText}>+{task.rewardPoints} PTS</Text>
+
+                    <Text style={styles.campaignSubtitle}>{task.campaignName}</Text>
+                    <Text style={styles.taskTitle}>{task.title}</Text>
+                    <Text style={styles.taskDesc} numberOfLines={2}>
+                      {task.description || task.instructions}
+                    </Text>
+
+                    {/* Task Meta Details */}
+                    <View style={styles.taskMetaRow}>
+                      <Text style={styles.metaInfoText}>
+                        ⏱️ {task.dwellTimeSeconds}s dwell time
+                      </Text>
+                      <Text style={styles.metaInfoText}>
+                        🎯 {task.completedToday}/{task.dailyCapPerUser} daily cap
+                      </Text>
                     </View>
-                  </View>
 
-                  <Text style={styles.campaignSubtitle}>{task.campaignName}</Text>
-                  <Text style={styles.taskTitle}>{task.title}</Text>
-                  <Text style={styles.taskDesc} numberOfLines={2}>
-                    {task.description || task.instructions}
-                  </Text>
-
-                  {/* Task Meta Details */}
-                  <View style={styles.taskMetaRow}>
-                    <Text style={styles.metaInfoText}>
-                      ⏱️ {task.dwellTimeSeconds}s dwell time
-                    </Text>
-                    <Text style={styles.metaInfoText}>
-                      🎯 {task.completedToday}/{task.dailyCapPerUser} daily cap
-                    </Text>
-                  </View>
-
-                  {/* Action Button */}
-                  <View style={styles.cardActionWrapper}>
-                    {!task.isEligible ? (
+                    {/* Action Button */}
+                    <View style={styles.cardActionWrapper}>
                       <Button
-                        title={task.ineligibilityReason || 'Ineligible'}
-                        disabled
-                        onPress={() => {}}
-                        variant="secondary"
-                        size="md"
-                        style={styles.taskBtn}
-                      />
-                    ) : task.hasActiveAssignment ? (
-                      <Button
-                        title="Resume Task ⏱️"
+                        title={getTaskActionButtonLabel(task)}
+                        disabled={!task.isEligible || (startingTaskId !== null && startingTaskId !== task.id)}
                         onPress={() => handleStartOrResumeTask(task)}
-                        variant="primary"
+                        variant={!task.isEligible ? 'secondary' : 'primary'}
                         size="md"
                         isLoading={startingTaskId === task.id}
-                        disabled={startingTaskId !== null && startingTaskId !== task.id}
                         style={styles.taskBtn}
                       />
-                    ) : (
-                      <Button
-                        title={`Start Task (+${task.rewardPoints} PTS)`}
-                        onPress={() => handleStartOrResumeTask(task)}
-                        variant="primary"
-                        size="md"
-                        isLoading={startingTaskId === task.id}
-                        disabled={startingTaskId !== null && startingTaskId !== task.id}
-                        style={styles.taskBtn}
-                      />
-                    )}
-                  </View>
-                </Card>
+                    </View>
+                  </Card>
+                </TouchableOpacity>
               );
             })
           )
@@ -670,7 +793,7 @@ export const EarnHubScreen: React.FC = () => {
               <Text style={styles.errorSub}>{historyError}</Text>
               <Button
                 title="Retry"
-                onPress={fetchHistory}
+                onPress={() => refreshAll(false)}
                 variant="outline"
                 size="sm"
                 style={styles.retryBtn}
@@ -692,43 +815,62 @@ export const EarnHubScreen: React.FC = () => {
               />
             </Card>
           ) : (
-            history.map((item) => {
-              const statusBadge = getStatusBadge(item.status);
+            <>
+              {history.map((item) => {
+                const statusBadge = getStatusBadge(item.status);
 
-              return (
-                <Card key={item.id} variant="default" style={styles.historyCard}>
-                  <View style={styles.historyRow}>
-                    <View style={styles.historyInfo}>
-                      <View style={styles.historyHeaderRow}>
-                        <Text style={styles.historyTitle} numberOfLines={1}>
-                          {item.task?.title || 'Advertiser Task Completion'}
+                return (
+                  <Card key={item.id} variant="default" style={styles.historyCard}>
+                    <View style={styles.historyRow}>
+                      <View style={styles.historyInfo}>
+                        <View style={styles.historyHeaderRow}>
+                          <Text style={styles.historyTitle} numberOfLines={1}>
+                            {item.task?.title || 'Advertiser Task Completion'}
+                          </Text>
+                          <Badge label={statusBadge.label} variant={statusBadge.variant} />
+                        </View>
+                        <Text style={styles.historyDate}>
+                          {new Date(item.completedAt).toLocaleString()}
                         </Text>
-                        <Badge label={statusBadge.label} variant={statusBadge.variant} />
+                        <Text style={styles.historyMetaMethod}>
+                          Method: {item.verificationMethod}
+                        </Text>
                       </View>
-                      <Text style={styles.historyDate}>
-                        {new Date(item.completedAt).toLocaleString()}
-                      </Text>
-                      <Text style={styles.historyMetaMethod}>
-                        Method: {item.verificationMethod}
-                      </Text>
+                      <View style={styles.historyPointsCol}>
+                        <Text style={styles.historyPointsValue}>
+                          +{item.rewardPoints}
+                        </Text>
+                        <Text style={styles.historyPointsLabel}>PTS</Text>
+                      </View>
                     </View>
-                    <View style={styles.historyPointsCol}>
-                      <Text style={styles.historyPointsValue}>
-                        +{item.rewardPoints}
-                      </Text>
-                      <Text style={styles.historyPointsLabel}>PTS</Text>
-                    </View>
-                  </View>
-                </Card>
-              );
-            })
+                  </Card>
+                );
+              })}
+              {historyPagination && historyPage < historyPagination.pages ? (
+                <View style={styles.loadMoreContainer}>
+                  <Button
+                    title={
+                      isLoadingMoreHistory
+                        ? 'Loading more...'
+                        : `Load More (${history.length}/${summary.totalCompleted})`
+                    }
+                    onPress={handleLoadMoreHistory}
+                    variant="outline"
+                    size="sm"
+                    isLoading={isLoadingMoreHistory}
+                    disabled={isLoadingMoreHistory}
+                    style={styles.loadMoreBtn}
+                  />
+                </View>
+              ) : null}
+            </>
           )
         )}
       </ScrollView>
 
       {/* --- IN-PROGRESS TASK EXECUTION MODAL --- */}
       <Modal
-        visible={isTaskModalVisible}
+        visible={isTaskModalVisible && isLegacyModalAllowed(activeTask?.category)}
         onClose={() => {
           if (!isVerifying) {
             setIsTaskModalVisible(false);
@@ -738,7 +880,7 @@ export const EarnHubScreen: React.FC = () => {
         }}
         title={activeTask?.title || 'Active Task In Progress'}
       >
-        {activeTask ? (
+        {activeTask && isLegacyModalAllowed(activeTask.category) ? (
           <View style={styles.modalContent}>
             <View style={styles.modalBadgeRow}>
               <Badge
@@ -760,8 +902,9 @@ export const EarnHubScreen: React.FC = () => {
               </Text>
             </Card>
 
-            {/* FIRST-PARTY ACTION (DWELL TIME) UI */}
-            {activeTask.verificationMethod === 'FIRST_PARTY_ACTION' ? (
+            {/* FIRST-PARTY ACTION (DWELL TIME) UI - STRICTLY FOR SUPPORTED LEGACY FIRST-PARTY ACTIONS */}
+            {activeTask.verificationMethod === 'FIRST_PARTY_ACTION' &&
+            isLegacyModalAllowed(activeTask.category) ? (
               <View style={styles.dwellContainer}>
                 <View style={[styles.timerCircle, isTimerPaused && styles.timerCirclePaused]}>
                   <Text style={[styles.timerNumber, isTimerPaused && styles.timerNumberPaused]}>
@@ -832,7 +975,7 @@ export const EarnHubScreen: React.FC = () => {
                   title="Close & Await Webhook"
                   onPress={() => {
                     setIsTaskModalVisible(false);
-                    fetchFeed();
+                    refreshAll(false);
                   }}
                   variant="outline"
                   size="md"
@@ -852,7 +995,7 @@ export const EarnHubScreen: React.FC = () => {
                   title="Close & Submit for Review"
                   onPress={() => {
                     setIsTaskModalVisible(false);
-                    fetchFeed();
+                    refreshAll(false);
                   }}
                   variant="primary"
                   size="lg"
@@ -1250,4 +1393,35 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
+  loadMoreContainer: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  loadMoreBtn: {
+    minWidth: 200,
+  },
+  demoBanner: {
+    marginHorizontal: THEME.spacing.lg,
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: THEME.borderRadius.md,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: THEME.colors.emerald,
+  },
+  demoBannerTitle: {
+    color: THEME.colors.emerald,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  demoBannerDesc: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 16,
+  },
 });
+

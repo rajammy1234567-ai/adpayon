@@ -320,3 +320,236 @@ export interface ShoppingStoreItem {
   affiliateUrl: string;
   badge?: string;
 }
+
+// ============================================================================
+// Advertiser Task Engine Types (Backward-Compatible Phase 10.2 Foundation)
+// ============================================================================
+
+export type TaskCategory =
+  | 'IN_APP_ACTION'
+  | 'PARTNER_WEBHOOK'
+  | 'SURVEY'
+  | 'MANUAL_VERIFY'
+  | 'APP_INSTALL'
+  | 'VIDEO_WATCH'
+  | 'ARTICLE_READ';
+
+export type VerificationMethod =
+  | 'FIRST_PARTY_ACTION'
+  | 'AUTHENTICATED_WEBHOOK'
+  | 'MANUAL_REVIEW';
+
+export type AppInstallPlatform = 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
+export type AppInstallAttributionMethod = 'SIGNED_POSTBACK' | 'MANUAL_REVIEW';
+export type AppInstallConversionEvent = 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+
+export interface AppInstallConfig {
+  appName: string;
+  packageName: string;
+  platform: AppInstallPlatform;
+  storeUrl: string;
+  attributionMethod: AppInstallAttributionMethod;
+  conversionEvent: AppInstallConversionEvent;
+}
+
+export type VideoCompletionPolicy = 'FULL_VIDEO' | 'MINIMUM_DURATION';
+
+export interface VideoWatchConfig {
+  videoUrl: string;
+  videoDurationSeconds: number;
+  requiredWatchSeconds: number;
+  allowSeeking: boolean;
+  sessionTimeoutSeconds: number;
+  completionPolicy?: VideoCompletionPolicy;
+}
+
+export interface ArticleReadComprehensionQuizAdmin {
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+}
+
+export interface ArticleReadComprehensionQuizClient {
+  question: string;
+  options: string[];
+}
+
+export interface ArticleReadConfigAdmin {
+  articleTitle: string;
+  articleContent: string;
+  sourceUrl?: string;
+  minReadDurationSeconds: number;
+  minScrollPercentage: number;
+  comprehensionQuiz?: ArticleReadComprehensionQuizAdmin;
+}
+
+export interface ArticleReadConfigClient {
+  articleTitle: string;
+  articleContent: string;
+  sourceUrl?: string;
+  minReadDurationSeconds: number;
+  minScrollPercentage: number;
+  comprehensionQuiz?: ArticleReadComprehensionQuizClient;
+}
+
+export type VideoSessionStatus = 'ACTIVE' | 'COMPLETED' | 'EXPIRED' | 'REJECTED';
+
+export interface VideoSessionData {
+  sessionId: string;
+  taskId: string;
+  assignmentId: string;
+  videoUrl: string;
+  videoDuration: number;
+  requiredWatchSeconds: number;
+  allowSeeking: boolean;
+  completionPolicy?: VideoCompletionPolicy;
+  accumulatedWatchSeconds: number;
+  timelineCoverageSeconds?: number;
+  playbackEnded?: boolean;
+  lastPlaybackPositionSeconds?: number;
+  remainingWatchSeconds: number;
+  status: VideoSessionStatus;
+  expiresAt: string | Date;
+  isQualified?: boolean;
+}
+
+export interface VideoSessionProgressPayload {
+  sessionId: string;
+  playbackPositionSeconds: number;
+  isPlaying: boolean;
+  isBuffering?: boolean;
+  playbackEnded?: boolean;
+  bufferedSeconds?: number;
+  appState?: 'active' | 'background' | 'inactive';
+}
+
+export interface VideoSessionProgressResponse {
+  sessionId: string;
+  accumulatedWatchSeconds: number;
+  timelineCoverageSeconds?: number;
+  playbackEnded?: boolean;
+  completionPolicy?: VideoCompletionPolicy;
+  requiredWatchSeconds: number;
+  remainingWatchSeconds: number;
+  isQualified: boolean;
+  status: VideoSessionStatus;
+}
+
+export type ArticleSessionStatus = 'ACTIVE' | 'COMPLETED' | 'EXPIRED' | 'REJECTED';
+
+export interface ArticleSessionData {
+  sessionId: string;
+  taskId: string;
+  assignmentId: string;
+  articleTitle: string;
+  articleContent: string;
+  sourceUrl?: string;
+  minReadDurationSeconds: number;
+  minScrollPercentage: number;
+  accumulatedReadSeconds: number;
+  maxScrollPercentage: number;
+  remainingReadSeconds: number;
+  status: ArticleSessionStatus;
+  hasQuiz: boolean;
+  quizQuestion?: string;
+  quizOptions?: string[];
+  quizAnswered: boolean;
+  quizAnswerCorrect: boolean;
+  quizAttempts: number;
+  quizMaxAttempts: number;
+  isQualified: boolean;
+  expiresAt: string | Date;
+}
+
+export interface ArticleSessionProgressPayload {
+  sessionId: string;
+  scrollPercentage: number;
+  appState?: 'active' | 'background' | 'inactive';
+  readingDeltaSeconds?: number;
+}
+
+export interface ArticleSessionProgressResponse {
+  sessionId: string;
+  accumulatedReadSeconds: number;
+  maxScrollPercentage: number;
+  remainingReadSeconds: number;
+  isQualified: boolean;
+  quizRequired: boolean;
+  quizAnswered: boolean;
+  quizAnswerCorrect: boolean;
+  status: ArticleSessionStatus;
+}
+
+export interface ArticleQuizAnswerPayload {
+  sessionId: string;
+  selectedOptionIndex: number;
+}
+
+export interface ArticleQuizAnswerResponse {
+  success: boolean;
+  correct: boolean;
+  message: string;
+  remainingAttempts?: number;
+  isQualified: boolean;
+}
+
+// ============================================================================
+// Phase 10.5 App Install / Acquisition Attribution Contract
+// ============================================================================
+
+export type AttributionProvider =
+  | 'ADVERTISER_DIRECT'
+  | 'APPSFLYER'
+  | 'ADJUST'
+  | 'SINGULAR'
+  | 'BRANCH';
+
+export interface AppInstallConversionPostbackPayload {
+  clickId: string;
+  externalTransactionId: string;
+  event: AppInstallConversionEvent;
+  packageName: string;
+  timestamp: number | string;
+  attributionProvider?: AttributionProvider;
+}
+
+export interface AppInstallConversionPostbackResponse {
+  success: boolean;
+  message: string;
+  data: {
+    completionId: string;
+    rewardPoints: number;
+    completedAt: string;
+    idempotent?: boolean;
+  };
+}
+
+export interface AppInstallVerificationContext {
+  task: {
+    id: string;
+    campaignId: string;
+    category: TaskCategory;
+    verificationMethod: VerificationMethod;
+    rewardPoints: number;
+    totalCap: number;
+    completionsCount: number;
+    status: string;
+    appInstallConfig?: AppInstallConfig;
+  };
+  assignment: {
+    id: string;
+    taskId: string;
+    userId: string;
+    clickId: string;
+    status: string;
+    assignedAt: Date | string;
+    expiresAt: Date | string;
+  };
+  campaign: {
+    id: string;
+    status: string;
+    webhookSecret?: string;
+  };
+}
+
+

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import crypto from 'node:crypto';
-import { Types } from 'mongoose';
+import { performance } from 'node:perf_hooks';
+import mongoose, { Types } from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import {
   Campaign,
@@ -11,6 +12,32 @@ import {
   VerificationEvidence,
 } from '../models';
 import { env } from '../config/env';
+import {
+  TransactionDiagnosticsTracker,
+  VerificationDiagnostic,
+  TransactionStepMetrics,
+} from '../testUtils/loadTestDiagnostics';
+import { taskVerificationMutex, QueueOverloadError } from '../utils/keyedMutex';
+
+export class TaskVerificationError extends Error {
+  constructor(
+    public statusCode: number,
+    public code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = 'TaskVerificationError';
+  }
+}
+
+/**
+ * Test-only synchronization barrier hook for evaluating transaction interleaving and races.
+ * Active exclusively when authorized isolated load test / diagnostic context is verified.
+ */
+export let testTxBarrier: (() => Promise<void>) | null = null;
+export function setTestTxBarrier(barrier: (() => Promise<void>) | null): void {
+  testTxBarrier = barrier;
+}
 
 /**
  * Helper to compute start of current UTC calendar day.
@@ -264,6 +291,42 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
             remainingDwellSeconds: Math.max(0, t.dwellTimeSeconds - (activeAssignment.dwellTimeAccumulatedSeconds || 0)),
           }
         : null,
+      appInstallConfig: t.appInstallConfig
+        ? {
+            appName: t.appInstallConfig.appName,
+            packageName: t.appInstallConfig.packageName,
+            platform: t.appInstallConfig.platform,
+            storeUrl: t.appInstallConfig.storeUrl,
+            attributionMethod: t.appInstallConfig.attributionMethod,
+            conversionEvent: t.appInstallConfig.conversionEvent,
+          }
+        : undefined,
+      videoWatchConfig: t.videoWatchConfig
+        ? {
+            videoUrl: t.videoWatchConfig.videoUrl,
+            videoDurationSeconds: t.videoWatchConfig.videoDurationSeconds,
+            requiredWatchSeconds: t.videoWatchConfig.requiredWatchSeconds,
+            allowSeeking: t.videoWatchConfig.allowSeeking,
+            completionPolicy: t.videoWatchConfig.completionPolicy || 'MINIMUM_DURATION',
+            sessionTimeoutSeconds: t.videoWatchConfig.sessionTimeoutSeconds,
+          }
+        : undefined,
+      articleReadConfig: t.articleReadConfig
+        ? {
+            articleTitle: t.articleReadConfig.articleTitle,
+            articleContent: t.articleReadConfig.articleContent,
+            sourceUrl: t.articleReadConfig.sourceUrl,
+            minReadDurationSeconds: t.articleReadConfig.minReadDurationSeconds,
+            minScrollPercentage: t.articleReadConfig.minScrollPercentage,
+            comprehensionQuiz: t.articleReadConfig.comprehensionQuiz
+              ? {
+                  question: t.articleReadConfig.comprehensionQuiz.question,
+                  options: t.articleReadConfig.comprehensionQuiz.options,
+                  // STRICT SECURITY: correctOptionIndex is intentionally OMITTED for clients!
+                }
+              : undefined,
+          }
+        : undefined,
     });
   }
 
@@ -478,10 +541,14 @@ export async function startTask(req: AuthenticatedRequest, res: Response): Promi
     userAgent: req.headers['user-agent'],
   });
 
-  // Format redirect URL if external template exists
+  // Format redirect URL if external template or storeUrl exists
   let actionUrl: string | undefined;
   if (task.externalActionUrl) {
     actionUrl = task.externalActionUrl
+      .replace('{click_id}', clickId)
+      .replace('{user_id}', user._id.toString());
+  } else if (task.appInstallConfig?.storeUrl) {
+    actionUrl = task.appInstallConfig.storeUrl
       .replace('{click_id}', clickId)
       .replace('{user_id}', user._id.toString());
   }
@@ -493,6 +560,8 @@ export async function startTask(req: AuthenticatedRequest, res: Response): Promi
         id: assignment._id.toString(),
         taskId: task._id.toString(),
         title: task.title,
+        category: task.category,
+        verificationMethod: task.verificationMethod,
         clickId: assignment.clickId,
         status: assignment.status,
         assignedAt: assignment.assignedAt,
@@ -556,12 +625,111 @@ export async function verifyFirstPartyAction(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  // Find assignment
-  const assignment = await TaskAssignment.findOne({
-    taskId: task._id,
-    userId: user._id,
-    status: { $in: ['ASSIGNED', 'IN_PROGRESS', 'EXPIRED'] },
-  });
+  // Phase 10.2: Fail closed for newly added categories that require dedicated verification engines
+  if (task.category === 'APP_INSTALL') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'UNSUPPORTED_TASK_CATEGORY',
+        message: 'App install tasks cannot be verified via generic first-party actions. Verified partner postback or manual review is required.',
+      },
+    });
+    return;
+  }
+
+  if (task.category === 'VIDEO_WATCH') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'UNSUPPORTED_TASK_CATEGORY',
+        message: 'Video watch tasks require a dedicated video playback verification session and cannot be completed via generic telemetry.',
+      },
+    });
+    return;
+  }
+
+  if (task.category === 'ARTICLE_READ') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'UNSUPPORTED_TASK_CATEGORY',
+        message: 'Article read tasks require a dedicated article reader verification session and cannot be completed via generic telemetry.',
+      },
+    });
+    return;
+  }
+
+  // Find assignment: if caller specifies assignmentId (e.g. idempotent retry after network timeout),
+  // locate that exact assignment. Otherwise, find the user's active in-progress assignment.
+  const rawAssignmentId = req.body?.assignmentId || (req.headers['x-assignment-id'] as string | undefined);
+  const requestedAssignmentId =
+    typeof rawAssignmentId === 'string' && rawAssignmentId.trim().length > 0
+      ? rawAssignmentId.trim()
+      : undefined;
+
+  let assignment;
+
+  if (requestedAssignmentId) {
+    if (!Types.ObjectId.isValid(requestedAssignmentId)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_ID', message: 'Invalid assignment ID format' },
+      });
+      return;
+    }
+
+    const specificAssignment = await TaskAssignment.findOne({
+      _id: new Types.ObjectId(requestedAssignmentId),
+      taskId: task._id,
+      userId: user._id,
+    });
+
+    if (!specificAssignment) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NO_ACTIVE_ASSIGNMENT',
+          message: 'No active task assignment found. Please start the task first.',
+        },
+      });
+      return;
+    }
+
+    if (specificAssignment.status === 'COMPLETED') {
+      // Idempotent reconciliation path for a specific known assignment retry
+      const existingCompletion = await TaskCompletion.findOne({
+        taskId: task._id,
+        userId: user._id,
+        assignmentId: specificAssignment._id,
+      });
+
+      if (existingCompletion) {
+        res.status(200).json({
+          success: true,
+          data: {
+            completion: {
+              id: existingCompletion._id.toString(),
+              taskId: task._id.toString(),
+              clickId: specificAssignment.clickId,
+              rewardPoints: existingCompletion.rewardPoints,
+              status: existingCompletion.status,
+              completedAt: existingCompletion.completedAt,
+            },
+            reconciled: true,
+          },
+        });
+        return;
+      }
+    }
+
+    assignment = specificAssignment;
+  } else {
+    assignment = await TaskAssignment.findOne({
+      taskId: task._id,
+      userId: user._id,
+      status: { $in: ['ASSIGNED', 'IN_PROGRESS', 'EXPIRED'] },
+    });
+  }
 
   if (!assignment) {
     res.status(404).json({
@@ -642,84 +810,303 @@ export async function verifyFirstPartyAction(req: AuthenticatedRequest, res: Res
     return;
   }
 
-  // Atomically claim completion on the assignment to guarantee mutual exclusion under concurrent requests
-  const updatedAssignment = await TaskAssignment.findOneAndUpdate(
-    {
-      _id: assignment._id,
-      status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
-    },
-    {
-      $set: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        dwellTimeAccumulatedSeconds: totalActiveSeconds,
-      },
-    },
-    { returnDocument: 'after' }
-  );
+  const runTransaction = async (queueMetrics?: { queueWaitMs: number; queueDepth: number }) => {
+    // Start atomic multi-document transaction session to guarantee ACID reward consistency
+    // STRICT RULE: Session is allocated strictly INSIDE runTransaction, NEVER while waiting in the queue!
+    const session = await mongoose.startSession();
+    const txStartTime = performance.now();
+    let attemptCount = 0;
+    let cumulativeFailedAttemptsMs = 0;
+    let finalAttemptDurationMs = 0;
+    let stepMetrics: TransactionStepMetrics = {
+      claimAssignmentMs: 0,
+      reserveCapMs: 0,
+      insertEvidenceMs: 0,
+      insertCompletionMs: 0,
+      insertEventMs: 0,
+      totalCallbackMs: 0,
+    };
+    const isDiagnosticsActive = TransactionDiagnosticsTracker.isRequestAuthorized(req);
+    const isCandidateOrdering =
+      isDiagnosticsActive &&
+      (req.headers['x-candidate-tx-ordering'] === 'true' || process.env.TEST_CANDIDATE_TX_ORDERING === 'true');
 
-  if (!updatedAssignment) {
-    res.status(404).json({
-      success: false,
-      error: { code: 'NO_ACTIVE_ASSIGNMENT', message: 'No active task assignment found or already completed' },
+    try {
+      let resultPayload: any = null;
+
+      await session.withTransaction(async () => {
+      attemptCount++;
+      const attemptStart = performance.now();
+
+      try {
+        let claimAssignmentMs = 0;
+        let reserveCapMs = 0;
+        let insertEvidenceMs = 0;
+        let insertCompletionMs = 0;
+        let insertEventMs = 0;
+
+        // Statement 1: Atomically claim assignment within transaction to guarantee mutual exclusion
+        const executeClaimAssignment = async () => {
+          const t0 = performance.now();
+          const updated = await TaskAssignment.findOneAndUpdate(
+            {
+              _id: assignment._id,
+              status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
+            },
+            {
+              $set: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                dwellTimeAccumulatedSeconds: totalActiveSeconds,
+              },
+            },
+            { session, returnDocument: 'after' }
+          );
+
+          if (!updated) {
+            throw new TaskVerificationError(
+              404,
+              'NO_ACTIVE_ASSIGNMENT',
+              'No active task assignment found or already completed'
+            );
+          }
+          claimAssignmentMs = performance.now() - t0;
+          return updated;
+        };
+
+        // Shared Task counter and status update
+        const executeReserveCap = async () => {
+          if (testTxBarrier && isDiagnosticsActive) {
+            await testTxBarrier();
+          }
+          const t1 = performance.now();
+          const updatedTask = await Task.findOneAndUpdate(
+            {
+              _id: task._id,
+              status: 'PUBLISHED',
+              $expr: { $lt: ['$completionsCount', '$totalCap'] },
+            },
+            { $inc: { completionsCount: 1 } },
+            { session, returnDocument: 'after' }
+          );
+
+          if (!updatedTask) {
+            const freshTask = await Task.findById(task._id).session(session);
+            if (!freshTask || freshTask.status !== 'PUBLISHED') {
+              throw new TaskVerificationError(
+                400,
+                'TASK_NOT_PUBLISHED',
+                'Task is no longer published or has been paused'
+              );
+            } else {
+              throw new TaskVerificationError(
+                400,
+                'CAP_EXHAUSTED',
+                'This task has reached its global completion cap. Reward cannot be claimed.'
+              );
+            }
+          }
+          reserveCapMs = performance.now() - t1;
+          return updatedTask;
+        };
+
+        // Evidence document insertion
+        const executeInsertEvidence = async (updatedAssign: any) => {
+          const t2 = performance.now();
+          const evidenceDocs = await VerificationEvidence.create(
+            [
+              {
+                assignmentId: updatedAssign._id,
+                taskId: task._id,
+                userId: user._id,
+                evidenceType: 'FIRST_PARTY_TELEMETRY',
+                signatureVerified: true,
+                rawPayload: {
+                  ...validationEvidencePayload,
+                  dwellTimeSeconds: task.dwellTimeSeconds,
+                },
+                ipAddress: req.ip || '127.0.0.1',
+                evaluatedAt: new Date(),
+              },
+            ],
+            { session }
+          );
+          insertEvidenceMs = performance.now() - t2;
+          return evidenceDocs[0];
+        };
+
+        // Completion document insertion
+        const executeInsertCompletion = async (updatedAssign: any, ev: any) => {
+          const t3 = performance.now();
+          const completionDocs = await TaskCompletion.create(
+            [
+              {
+                taskId: task._id,
+                campaignId: task.campaignId,
+                userId: user._id,
+                assignmentId: updatedAssign._id,
+                clickId: updatedAssign.clickId,
+                rewardPoints: task.rewardPoints,
+                status: 'VERIFIED',
+                verificationMethod: 'FIRST_PARTY_ACTION',
+                evidenceId: ev._id,
+                completedAt: new Date(),
+              },
+            ],
+            { session }
+          );
+          insertCompletionMs = performance.now() - t3;
+          return completionDocs[0];
+        };
+
+        // Event log insertion
+        const executeInsertEvent = async (updatedAssign: any, comp: any) => {
+          const t4 = performance.now();
+          await TaskEvent.create(
+            [
+              {
+                assignmentId: updatedAssign._id,
+                taskId: task._id,
+                userId: user._id,
+                eventType: 'VERIFY_SUCCESS',
+                payload: { completionId: comp._id.toString(), rewardPoints: task.rewardPoints },
+                ipAddress: req.ip || '127.0.0.1',
+              },
+            ],
+            { session }
+          );
+          insertEventMs = performance.now() - t4;
+        };
+
+        const updatedAssignment = await executeClaimAssignment();
+
+        if (!isCandidateOrdering) {
+          // Current default ordering:
+          // 1. Assignment -> 2. Reserve Cap -> 3. Evidence -> 4. Completion -> 5. Event
+          await executeReserveCap();
+          const evidence = await executeInsertEvidence(updatedAssignment);
+          const completion = await executeInsertCompletion(updatedAssignment, evidence);
+          await executeInsertEvent(updatedAssignment, completion);
+
+          resultPayload = {
+            completion: {
+              id: completion._id.toString(),
+              taskId: task._id.toString(),
+              clickId: updatedAssignment.clickId,
+              rewardPoints: completion.rewardPoints,
+              status: completion.status,
+              completedAt: completion.completedAt,
+            },
+          };
+        } else {
+          // Candidate ordering (Phase 8D.10 test-only evaluation):
+          // 1. Assignment -> 2. Evidence -> 3. Completion -> 4. Event -> 5. Reserve Cap
+          const evidence = await executeInsertEvidence(updatedAssignment);
+          const completion = await executeInsertCompletion(updatedAssignment, evidence);
+          await executeInsertEvent(updatedAssignment, completion);
+          await executeReserveCap();
+
+          resultPayload = {
+            completion: {
+              id: completion._id.toString(),
+              taskId: task._id.toString(),
+              clickId: updatedAssignment.clickId,
+              rewardPoints: completion.rewardPoints,
+              status: completion.status,
+              completedAt: completion.completedAt,
+            },
+          };
+        }
+
+        if (isDiagnosticsActive) {
+          finalAttemptDurationMs = performance.now() - attemptStart;
+          stepMetrics = {
+            claimAssignmentMs: Number(claimAssignmentMs.toFixed(2)),
+            reserveCapMs: Number(reserveCapMs.toFixed(2)),
+            insertEvidenceMs: Number(insertEvidenceMs.toFixed(2)),
+            insertCompletionMs: Number(insertCompletionMs.toFixed(2)),
+            insertEventMs: Number(insertEventMs.toFixed(2)),
+            totalCallbackMs: Number(finalAttemptDurationMs.toFixed(2)),
+          };
+        }
+      } catch (attemptErr) {
+        if (isDiagnosticsActive) {
+          cumulativeFailedAttemptsMs += performance.now() - attemptStart;
+        }
+        throw attemptErr;
+      }
     });
-    return;
+
+    // Total transaction time encompasses full multi-document execution and commit acknowledgment
+    const totalTxDurationMs = performance.now() - txStartTime;
+    const remainingOverheadMs = Math.max(
+      0,
+      totalTxDurationMs - cumulativeFailedAttemptsMs - finalAttemptDurationMs
+    );
+
+    let diagMetrics: VerificationDiagnostic | null = null;
+    if (isDiagnosticsActive) {
+      diagMetrics = {
+        attemptCount,
+        retries: attemptCount - 1,
+        totalTxMs: Number(totalTxDurationMs.toFixed(2)),
+        cumulativeFailedAttemptsMs: Number(cumulativeFailedAttemptsMs.toFixed(2)),
+        finalAttemptDurationMs: Number(finalAttemptDurationMs.toFixed(2)),
+        remainingOverheadMs: Number(remainingOverheadMs.toFixed(2)),
+        commitDurationMs: Number(remainingOverheadMs.toFixed(2)),
+        steps: stepMetrics,
+        hasTransientError: attemptCount > 1,
+        ordering: isCandidateOrdering ? 'CANDIDATE' : 'CURRENT',
+        ...(queueMetrics ? { queueWaitMs: queueMetrics.queueWaitMs, queueDepth: queueMetrics.queueDepth } : {}),
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      data: resultPayload,
+      ...(isDiagnosticsActive && diagMetrics ? { _diagnostics: diagMetrics } : {}),
+    });
+  } finally {
+    await session.endSession();
   }
+};
 
-  // Record verification evidence
-  const evidence = await VerificationEvidence.create({
-    assignmentId: updatedAssignment._id,
-    taskId: task._id,
-    userId: user._id,
-    evidenceType: 'FIRST_PARTY_TELEMETRY',
-    signatureVerified: true,
-    rawPayload: {
-      ...validationEvidencePayload,
-      dwellTimeSeconds: task.dwellTimeSeconds,
-    },
-    ipAddress: req.ip || '127.0.0.1',
-    evaluatedAt: new Date(),
-  });
+  // Safe Feature Flag: default OFF in all environments; requires explicit server env configuration
+  const isQueueEnabled = process.env.TASK_VERIFICATION_QUEUE_ENABLED === 'true';
 
-  // Idempotently create completion record
-  const completion = await TaskCompletion.create({
-    taskId: task._id,
-    campaignId: task.campaignId,
-    userId: user._id,
-    assignmentId: updatedAssignment._id,
-    clickId: updatedAssignment.clickId,
-    rewardPoints: task.rewardPoints,
-    status: 'VERIFIED',
-    verificationMethod: 'FIRST_PARTY_ACTION',
-    evidenceId: evidence._id,
-    completedAt: new Date(),
-  });
+  try {
+    if (isQueueEnabled) {
+      await taskVerificationMutex.run(task._id.toString(), async (queueMetrics) => {
+        await runTransaction(queueMetrics);
+      });
+    } else {
+      await runTransaction();
+    }
+  } catch (err: any) {
+    if (err instanceof QueueOverloadError) {
+      res.status(err.statusCode).json({
+        success: false,
+        error: { code: err.code, message: err.message },
+      });
+      return;
+    }
 
-  await Task.updateOne({ _id: task._id }, { $inc: { completionsCount: 1 } });
+    if (err instanceof TaskVerificationError) {
+      res.status(err.statusCode).json({
+        success: false,
+        error: { code: err.code, message: err.message },
+      });
+      return;
+    }
 
-  // Record audit event
-  await TaskEvent.create({
-    assignmentId: updatedAssignment._id,
-    taskId: task._id,
-    userId: user._id,
-    eventType: 'VERIFY_SUCCESS',
-    payload: { completionId: completion._id.toString(), rewardPoints: task.rewardPoints },
-    ipAddress: req.ip || '127.0.0.1',
-  });
-
-  res.status(200).json({
-    success: true,
-    data: {
-      completion: {
-        id: completion._id.toString(),
-        taskId: task._id.toString(),
-        clickId: assignment.clickId,
-        rewardPoints: completion.rewardPoints,
-        status: completion.status,
-        completedAt: completion.completedAt,
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'TRANSACTION_FAILED',
+        message: err.message || 'Failed to complete transaction',
       },
-    },
-  });
+    });
+  }
 }
 
 /**
@@ -829,7 +1216,8 @@ export async function recordTaskHeartbeat(req: AuthenticatedRequest, res: Respon
 
 /**
  * GET /api/tasks/history
- * Returns paginated task assignment and completion history for the user.
+ * Returns paginated task assignment and completion history for the user,
+ * along with authoritative aggregate summary (total completions and total promotional reward points).
  */
 export async function getTaskHistory(req: AuthenticatedRequest, res: Response): Promise<void> {
   const user = req.user!;
@@ -837,7 +1225,7 @@ export async function getTaskHistory(req: AuthenticatedRequest, res: Response): 
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
   const skip = (page - 1) * limit;
 
-  const [completions, total] = await Promise.all([
+  const [completions, total, pointsAgg] = await Promise.all([
     TaskCompletion.find({ userId: user._id })
       .populate('taskId', 'title category rewardPoints')
       .sort({ completedAt: -1 })
@@ -845,7 +1233,13 @@ export async function getTaskHistory(req: AuthenticatedRequest, res: Response): 
       .limit(limit)
       .lean(),
     TaskCompletion.countDocuments({ userId: user._id }),
+    TaskCompletion.aggregate([
+      { $match: { userId: user._id, status: 'VERIFIED' } },
+      { $group: { _id: null, totalRewardPoints: { $sum: '$rewardPoints' } } },
+    ]),
   ]);
+
+  const totalRewardPoints = pointsAgg[0]?.totalRewardPoints || 0;
 
   res.status(200).json({
     success: true,
@@ -864,12 +1258,41 @@ export async function getTaskHistory(req: AuthenticatedRequest, res: Response): 
         verificationMethod: c.verificationMethod,
         completedAt: c.completedAt,
       })),
+      summary: {
+        totalCompleted: total,
+        totalRewardPoints,
+      },
       pagination: {
         page,
         limit,
         total,
         pages: Math.ceil(total / limit),
       },
+    },
+  });
+}
+
+/**
+ * GET /api/tasks/summary
+ * Returns authoritative aggregate summary of user's task completions and promotional points.
+ */
+export async function getTaskSummary(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const user = req.user!;
+  const [totalCompleted, pointsAgg] = await Promise.all([
+    TaskCompletion.countDocuments({ userId: user._id }),
+    TaskCompletion.aggregate([
+      { $match: { userId: user._id, status: 'VERIFIED' } },
+      { $group: { _id: null, totalRewardPoints: { $sum: '$rewardPoints' } } },
+    ]),
+  ]);
+
+  const totalRewardPoints = pointsAgg[0]?.totalRewardPoints || 0;
+
+  res.status(200).json({
+    success: true,
+    data: {
+      totalCompleted,
+      totalRewardPoints,
     },
   });
 }
@@ -896,11 +1319,25 @@ export async function getTaskStatus(req: AuthenticatedRequest, res: Response): P
   }).sort({ createdAt: -1 });
 
   if (!assignment) {
+    const task = await Task.findById(id).populate('campaignId', 'name');
     res.status(200).json({
       success: true,
       data: {
         hasAssignment: false,
         status: 'NONE',
+        task: task
+          ? {
+              id: task._id.toString(),
+              title: task.title,
+              description: task.description,
+              category: task.category,
+              rewardPoints: task.rewardPoints,
+              status: task.status,
+              verificationMethod: task.verificationMethod,
+              appInstallConfig: task.appInstallConfig,
+              campaignName: (task.campaignId as any)?.name || 'Partner Advertiser',
+            }
+          : undefined,
       },
     });
     return;
@@ -916,7 +1353,7 @@ export async function getTaskStatus(req: AuthenticatedRequest, res: Response): P
   }
 
   const currentStatus = isExpired ? 'EXPIRED' : assignment.status;
-  const task = await Task.findById(assignment.taskId);
+  const task = await Task.findById(assignment.taskId).populate('campaignId', 'name');
   const dwellTimeRequiredSeconds = task?.dwellTimeSeconds || 0;
   const dwellTimeAccumulatedSeconds = assignment.dwellTimeAccumulatedSeconds || 0;
   const remainingDwellSeconds = Math.max(0, dwellTimeRequiredSeconds - dwellTimeAccumulatedSeconds);
@@ -926,6 +1363,19 @@ export async function getTaskStatus(req: AuthenticatedRequest, res: Response): P
     data: {
       hasAssignment: true,
       status: currentStatus,
+      task: task
+        ? {
+            id: task._id.toString(),
+            title: task.title,
+            description: task.description,
+            category: task.category,
+            rewardPoints: task.rewardPoints,
+            status: task.status,
+            verificationMethod: task.verificationMethod,
+            appInstallConfig: task.appInstallConfig,
+            campaignName: (task.campaignId as any)?.name || 'Partner Advertiser',
+          }
+        : undefined,
       assignment: {
         id: assignment._id.toString(),
         clickId: assignment.clickId,
@@ -937,7 +1387,79 @@ export async function getTaskStatus(req: AuthenticatedRequest, res: Response): P
         dwellTimeAccumulatedSeconds,
         remainingDwellSeconds,
         isExpired,
+        hasOpenedStore: Boolean((assignment as any).hasOpenedStore),
+        storeVisitedAt: (assignment as any).storeVisitedAt,
       },
     },
   });
 }
+
+/**
+ * POST /api/tasks/:id/store-visit
+ * Authoritative server tracking of user visiting official store listing.
+ * Strictly tracking information only - NEVER reward verification evidence.
+ */
+export async function recordStoreVisit(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const user = req.user!;
+
+  if (!Types.ObjectId.isValid(id)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'Invalid task ID format' },
+    });
+    return;
+  }
+
+  // Find active assignment for this task and user
+  const assignment = await TaskAssignment.findOne({
+    taskId: new Types.ObjectId(id),
+    userId: user._id,
+    status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!assignment) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'ASSIGNMENT_NOT_FOUND', message: 'No active assignment found to record store visit' },
+    });
+    return;
+  }
+
+  const visitedAt = new Date();
+  assignment.hasOpenedStore = true;
+  assignment.storeVisitedAt = visitedAt;
+  if (assignment.status === 'ASSIGNED') {
+    assignment.status = 'IN_PROGRESS';
+  }
+  await assignment.save();
+
+  // Log immutable tracking event (strictly tracking only, never completion/reward)
+  await TaskEvent.create({
+    assignmentId: assignment._id,
+    taskId: assignment.taskId,
+    userId: user._id,
+    eventType: 'STORE_VISIT',
+    payload: {
+      clickId: assignment.clickId,
+      platform: 'ANDROID',
+      store: 'GOOGLE_PLAY',
+      action: 'USER_OPENED_STORE',
+      note: 'Authoritative store visit tracking - not reward verification evidence',
+    },
+    ipAddress: req.ip || '127.0.0.1',
+    userAgent: req.headers['user-agent'],
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Store visit recorded for assignment tracking',
+    data: {
+      assignmentId: assignment._id.toString(),
+      hasOpenedStore: true,
+      storeVisitedAt: visitedAt,
+    },
+  });
+}
+

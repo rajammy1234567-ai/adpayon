@@ -17,6 +17,9 @@ import { QuizLeaderboardScreen } from '../screens/quiz/QuizLeaderboardScreen';
 import { ReferralInviteScreen } from '../screens/referral/ReferralInviteScreen';
 import { MobileRechargeScreen } from '../screens/utility/MobileRechargeScreen';
 import { ShoppingCashbackScreen } from '../screens/utility/ShoppingCashbackScreen';
+import { VideoWatchTaskScreen } from '../screens/earn/VideoWatchTaskScreen';
+import { ArticleReadTaskScreen } from '../screens/earn/ArticleReadTaskScreen';
+import { AppInstallTaskScreen } from '../screens/earn/AppInstallTaskScreen';
 import { AppTabs } from './AppTabs';
 import { RootStackParamList } from './types';
 import { useAuthStore } from '../store/authStore';
@@ -78,6 +81,9 @@ export const RootNavigator: React.FC = () => {
             <Stack.Screen name="MobileRecharge" component={MobileRechargeScreen} />
             <Stack.Screen name="ShoppingCashback" component={ShoppingCashbackScreen} />
             <Stack.Screen name="KycUpload" component={KycUploadScreen} />
+            <Stack.Screen name="VideoWatchTask" component={VideoWatchTaskScreen} />
+            <Stack.Screen name="ArticleReadTask" component={ArticleReadTaskScreen} />
+            <Stack.Screen name="AppInstallTask" component={AppInstallTaskScreen} />
           </Stack.Group>
         )}
       </Stack.Navigator>

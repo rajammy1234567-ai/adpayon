@@ -1,8 +1,50 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
-export type TaskCategory = 'IN_APP_ACTION' | 'PARTNER_WEBHOOK' | 'SURVEY' | 'MANUAL_VERIFY';
+export type TaskCategory =
+  | 'IN_APP_ACTION'
+  | 'PARTNER_WEBHOOK'
+  | 'SURVEY'
+  | 'MANUAL_VERIFY'
+  | 'APP_INSTALL'
+  | 'VIDEO_WATCH'
+  | 'ARTICLE_READ';
 export type VerificationMethod = 'FIRST_PARTY_ACTION' | 'AUTHENTICATED_WEBHOOK' | 'MANUAL_REVIEW';
 export type TaskStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'EXHAUSTED' | 'ARCHIVED';
+
+export interface IAppInstallConfig {
+  appName: string;
+  packageName: string;
+  platform: 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
+  storeUrl: string;
+  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW';
+  conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+}
+
+export type VideoCompletionPolicy = 'FULL_VIDEO' | 'MINIMUM_DURATION';
+
+export interface IVideoWatchConfig {
+  videoUrl: string;
+  videoDurationSeconds: number;
+  requiredWatchSeconds: number;
+  allowSeeking: boolean;
+  sessionTimeoutSeconds: number;
+  completionPolicy?: VideoCompletionPolicy;
+}
+
+export interface IArticleReadComprehensionQuiz {
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+}
+
+export interface IArticleReadConfig {
+  articleTitle: string;
+  articleContent: string;
+  sourceUrl?: string;
+  minReadDurationSeconds: number;
+  minScrollPercentage: number;
+  comprehensionQuiz?: IArticleReadComprehensionQuiz;
+}
 
 export interface ITaskTargeting {
   minAncestryDepth?: number;
@@ -26,6 +68,9 @@ export interface ITask extends Document {
   dwellTimeSeconds: number; // For first-party engagement verification
   externalActionUrl?: string; // Redirect template for partner tasks
   instructions?: string;
+  appInstallConfig?: IAppInstallConfig;
+  videoWatchConfig?: IVideoWatchConfig;
+  articleReadConfig?: IArticleReadConfig;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -52,7 +97,15 @@ const taskSchema = new Schema<ITask>(
     },
     category: {
       type: String,
-      enum: ['IN_APP_ACTION', 'PARTNER_WEBHOOK', 'SURVEY', 'MANUAL_VERIFY'],
+      enum: [
+        'IN_APP_ACTION',
+        'PARTNER_WEBHOOK',
+        'SURVEY',
+        'MANUAL_VERIFY',
+        'APP_INSTALL',
+        'VIDEO_WATCH',
+        'ARTICLE_READ',
+      ],
       required: [true, 'Task category is required'],
     },
     verificationMethod: {
@@ -124,6 +177,54 @@ const taskSchema = new Schema<ITask>(
       type: String,
       trim: true,
       maxlength: [2000, 'Instructions cannot exceed 2000 characters'],
+    },
+    appInstallConfig: {
+      type: {
+        appName: { type: String, trim: true, maxlength: 100 },
+        packageName: { type: String, trim: true, maxlength: 150 },
+        platform: { type: String, enum: ['ANDROID', 'IOS', 'CROSS_PLATFORM'] },
+        storeUrl: { type: String, trim: true, maxlength: 500 },
+        attributionMethod: { type: String, enum: ['SIGNED_POSTBACK', 'MANUAL_REVIEW'] },
+        conversionEvent: { type: String, enum: ['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE'] },
+      },
+      required: false,
+      _id: false,
+    },
+    videoWatchConfig: {
+      type: {
+        videoUrl: { type: String, trim: true, maxlength: 500 },
+        videoDurationSeconds: { type: Number, min: 5 },
+        requiredWatchSeconds: { type: Number, min: 5 },
+        allowSeeking: { type: Boolean, default: false },
+        sessionTimeoutSeconds: { type: Number, min: 30, default: 1800 },
+        completionPolicy: {
+          type: String,
+          enum: ['FULL_VIDEO', 'MINIMUM_DURATION'],
+          default: 'FULL_VIDEO',
+        },
+      },
+      required: false,
+      _id: false,
+    },
+    articleReadConfig: {
+      type: {
+        articleTitle: { type: String, trim: true, maxlength: 200 },
+        articleContent: { type: String, maxlength: 50000 },
+        sourceUrl: { type: String, trim: true, maxlength: 500 },
+        minReadDurationSeconds: { type: Number, min: 5 },
+        minScrollPercentage: { type: Number, min: 1, max: 100, default: 80 },
+        comprehensionQuiz: {
+          type: {
+            question: { type: String, trim: true, maxlength: 300 },
+            options: { type: [String] },
+            correctOptionIndex: { type: Number, min: 0 },
+          },
+          required: false,
+          _id: false,
+        },
+      },
+      required: false,
+      _id: false,
     },
     createdBy: {
       type: Schema.Types.ObjectId,

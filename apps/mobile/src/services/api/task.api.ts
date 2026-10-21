@@ -1,6 +1,28 @@
+import {
+  AppInstallConfig,
+  ArticleReadConfigClient,
+  ArticleSessionData,
+  ArticleSessionProgressPayload,
+  ArticleSessionProgressResponse,
+  ArticleQuizAnswerPayload,
+  ArticleQuizAnswerResponse,
+  VideoSessionData,
+  VideoSessionProgressPayload,
+  VideoSessionProgressResponse,
+  VideoWatchConfig,
+} from '@adpayon/shared';
 import { apiClient } from './client';
+import { useDemoStore } from '../../store/demoStore';
+import { DEMO_TASKS, DEMO_SUMMARY, DEMO_HISTORY } from '../../constants/demoData';
 
-export type TaskCategory = 'IN_APP_ACTION' | 'PARTNER_WEBHOOK' | 'SURVEY' | 'MANUAL_VERIFY';
+export type TaskCategory =
+  | 'IN_APP_ACTION'
+  | 'PARTNER_WEBHOOK'
+  | 'SURVEY'
+  | 'MANUAL_VERIFY'
+  | 'APP_INSTALL'
+  | 'VIDEO_WATCH'
+  | 'ARTICLE_READ';
 export type VerificationMethod = 'FIRST_PARTY_ACTION' | 'AUTHENTICATED_WEBHOOK' | 'MANUAL_REVIEW';
 export type TaskAssignmentStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'EXPIRED' | 'CANCELLED';
 export type TaskCompletionStatus = 'VERIFIED' | 'FLAGGED' | 'REJECTED';
@@ -25,6 +47,9 @@ export interface TaskFeedItem {
   isEligible: boolean;
   ineligibilityReason?: string;
   hasActiveAssignment: boolean;
+  appInstallConfig?: AppInstallConfig;
+  videoWatchConfig?: VideoWatchConfig;
+  articleReadConfig?: ArticleReadConfigClient;
   activeAssignment?: {
     id: string;
     clickId: string;
@@ -66,6 +91,17 @@ export interface TaskCompletionItem {
 export interface TaskStatusResponse {
   hasAssignment: boolean;
   status: string;
+  task?: {
+    id: string;
+    title: string;
+    description?: string;
+    category: TaskCategory;
+    rewardPoints: number;
+    status: string;
+    verificationMethod: VerificationMethod;
+    appInstallConfig?: AppInstallConfig;
+    campaignName?: string;
+  };
   assignment?: {
     id: string;
     clickId: string;
@@ -77,7 +113,14 @@ export interface TaskStatusResponse {
     dwellTimeAccumulatedSeconds?: number;
     remainingDwellSeconds?: number;
     isExpired?: boolean;
+    hasOpenedStore?: boolean;
+    storeVisitedAt?: string;
   };
+}
+
+export interface TaskSummaryData {
+  totalCompleted: number;
+  totalRewardPoints: number;
 }
 
 export interface TaskHistoryPagination {
@@ -95,6 +138,9 @@ export async function getTaskFeedApi(): Promise<{
   success: boolean;
   data: { tasks: TaskFeedItem[] };
 }> {
+  if (useDemoStore.getState().isDemoMode) {
+    return { success: true, data: { tasks: DEMO_TASKS } };
+  }
   return apiClient<{ success: boolean; data: { tasks: TaskFeedItem[] } }>('/tasks/feed');
 }
 
@@ -106,6 +152,26 @@ export async function startTaskApi(taskId: string): Promise<{
   success: boolean;
   data: { assignment: TaskAssignmentResponse };
 }> {
+  if (useDemoStore.getState().isDemoMode) {
+    const task = DEMO_TASKS.find((t) => t.id === taskId) || DEMO_TASKS[0];
+    return {
+      success: true,
+      data: {
+        assignment: {
+          id: `demo-assignment-${taskId}`,
+          taskId,
+          title: task.title,
+          clickId: `demo-click-${taskId}`,
+          status: 'IN_PROGRESS',
+          assignedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          dwellTimeRequiredSeconds: task.dwellTimeSeconds,
+          dwellTimeAccumulatedSeconds: 0,
+          remainingDwellSeconds: task.dwellTimeSeconds,
+        },
+      },
+    };
+  }
   return apiClient<{ success: boolean; data: { assignment: TaskAssignmentResponse } }>(
     `/tasks/${taskId}/start`,
     { method: 'POST' }
@@ -131,6 +197,20 @@ export async function verifyTaskActionApi(
     message?: string;
   };
 }> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        completion: {
+          id: `demo-comp-${taskId}`,
+          status: 'VERIFIED',
+          rewardPoints: 25,
+          completedAt: new Date().toISOString(),
+        },
+        message: 'Demo action verified (Sample Mode)',
+      },
+    };
+  }
   return apiClient<{
     success: boolean;
     data: {
@@ -163,6 +243,16 @@ export async function heartbeatTaskApi(
     dwellTimeRequiredSeconds: number;
   };
 }> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        dwellTimeAccumulatedSeconds: data.activeDurationSeconds || 5,
+        remainingDwellSeconds: 0,
+        dwellTimeRequiredSeconds: 5,
+      },
+    };
+  }
   return apiClient<{
     success: boolean;
     data: {
@@ -187,16 +277,53 @@ export async function getTaskHistoryApi(
   success: boolean;
   data: {
     completions: TaskCompletionItem[];
+    summary?: TaskSummaryData;
     pagination: TaskHistoryPagination;
   };
 }> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        completions: DEMO_HISTORY as unknown as TaskCompletionItem[],
+        summary: DEMO_SUMMARY,
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: DEMO_HISTORY.length,
+          pages: 1,
+        },
+      },
+    };
+  }
   return apiClient<{
     success: boolean;
     data: {
       completions: TaskCompletionItem[];
+      summary?: TaskSummaryData;
       pagination: TaskHistoryPagination;
     };
   }>(`/tasks/history?page=${page}&limit=${limit}`);
+}
+
+/**
+ * GET /api/tasks/summary
+ * Fetches authoritative aggregate summary of user's task completions and promotional reward points.
+ */
+export async function getTaskSummaryApi(): Promise<{
+  success: boolean;
+  data: TaskSummaryData;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: DEMO_SUMMARY,
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: TaskSummaryData;
+  }>('/tasks/summary');
 }
 
 /**
@@ -207,8 +334,503 @@ export async function getTaskStatusApi(taskId: string): Promise<{
   success: boolean;
   data: TaskStatusResponse;
 }> {
+  if (useDemoStore.getState().isDemoMode) {
+    const task = DEMO_TASKS.find((t) => t.id === taskId);
+    return {
+      success: true,
+      data: {
+        hasAssignment: true,
+        status: 'IN_PROGRESS',
+        task: task
+          ? {
+              id: task.id,
+              title: task.title,
+              description: task.description,
+              category: task.category,
+              rewardPoints: task.rewardPoints,
+              status: 'PUBLISHED',
+              verificationMethod: task.verificationMethod,
+              appInstallConfig: task.appInstallConfig,
+              campaignName: task.campaignName,
+            }
+          : undefined,
+        assignment: {
+          id: `demo-assignment-${taskId}`,
+          clickId: `demo-click-${taskId}`,
+          status: 'IN_PROGRESS',
+          assignedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          hasOpenedStore: true,
+          storeVisitedAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
   return apiClient<{
     success: boolean;
     data: TaskStatusResponse;
   }>(`/tasks/${taskId}/status`);
 }
+
+/**
+ * POST /api/tasks/:id/store-visit
+ * Authoritatively records official Google Play Store opening. Strictly tracking metadata, never reward verification.
+ */
+export async function recordStoreVisitApi(taskId: string): Promise<{
+  success: boolean;
+  message?: string;
+  data: {
+    assignmentId: string;
+    hasOpenedStore: boolean;
+    storeVisitedAt: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      message: 'Store visit recorded (Sample Mode)',
+      data: {
+        assignmentId: `demo-assignment-${taskId}`,
+        hasOpenedStore: true,
+        storeVisitedAt: new Date().toISOString(),
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    message?: string;
+    data: {
+      assignmentId: string;
+      hasOpenedStore: boolean;
+      storeVisitedAt: string;
+    };
+  }>(`/tasks/${taskId}/store-visit`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * POST /api/tasks/:id/video-session/start
+ * Starts or resumes a server-authoritative video watch session.
+ */
+export async function startVideoSessionApi(
+  taskId: string,
+  assignmentId?: string
+): Promise<{
+  success: boolean;
+  data: VideoSessionData;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    const task = DEMO_TASKS.find((t) => t.id === taskId) || DEMO_TASKS[0];
+    const cfg = task.videoWatchConfig!;
+    return {
+      success: true,
+      data: {
+        sessionId: `demo-video-session-${taskId}`,
+        taskId,
+        assignmentId: assignmentId || `demo-assignment-${taskId}`,
+        videoUrl: cfg.videoUrl,
+        videoDuration: cfg.videoDurationSeconds,
+        requiredWatchSeconds: cfg.requiredWatchSeconds,
+        allowSeeking: cfg.allowSeeking,
+        completionPolicy: cfg.completionPolicy,
+        accumulatedWatchSeconds: 0,
+        remainingWatchSeconds: cfg.requiredWatchSeconds,
+        status: 'ACTIVE',
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        isQualified: false,
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: VideoSessionData;
+  }>(`/tasks/${taskId}/video-session/start`, {
+    method: 'POST',
+    body: assignmentId ? JSON.stringify({ assignmentId }) : undefined,
+  });
+}
+
+/**
+ * POST /api/tasks/:id/video-session/progress
+ * Sends periodic video playback telemetry beacon to the server.
+ */
+export async function recordVideoProgressApi(
+  taskId: string,
+  payload: VideoSessionProgressPayload
+): Promise<{
+  success: boolean;
+  data: VideoSessionProgressResponse;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    const isQualified = (payload.playbackPositionSeconds || 0) >= 5;
+    return {
+      success: true,
+      data: {
+        sessionId: payload.sessionId,
+        accumulatedWatchSeconds: Math.min(5, Math.floor(payload.playbackPositionSeconds || 0)),
+        requiredWatchSeconds: 5,
+        remainingWatchSeconds: isQualified ? 0 : Math.max(0, 5 - Math.floor(payload.playbackPositionSeconds || 0)),
+        isQualified,
+        status: 'ACTIVE',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: VideoSessionProgressResponse;
+  }>(`/tasks/${taskId}/video-session/progress`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /api/tasks/:id/video-session/:sessionId
+ * Retrieves the current authoritative status of a video session.
+ */
+export async function getVideoSessionStatusApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  data: VideoSessionData;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    const task = DEMO_TASKS.find((t) => t.id === taskId) || DEMO_TASKS[0];
+    const cfg = task.videoWatchConfig!;
+    return {
+      success: true,
+      data: {
+        sessionId,
+        taskId,
+        assignmentId: `demo-assignment-${taskId}`,
+        videoUrl: cfg.videoUrl,
+        videoDuration: cfg.videoDurationSeconds,
+        requiredWatchSeconds: cfg.requiredWatchSeconds,
+        allowSeeking: cfg.allowSeeking,
+        accumulatedWatchSeconds: cfg.requiredWatchSeconds,
+        remainingWatchSeconds: 0,
+        status: 'ACTIVE',
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        isQualified: true,
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: VideoSessionData;
+  }>(`/tasks/${taskId}/video-session/${sessionId}`);
+}
+
+/**
+ * POST /api/tasks/:id/video-session/verify
+ * Authoritatively verifies video watch completion and triggers promotional reward transaction.
+ */
+export async function verifyVideoWatchApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  data: {
+    completion: {
+      id: string;
+      taskId: string;
+      clickId: string;
+      rewardPoints: number;
+      status: TaskCompletionStatus;
+      completedAt: string;
+    };
+    session: {
+      sessionId: string;
+      accumulatedWatchSeconds: number;
+      status: string;
+    };
+    reconciled?: boolean;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        completion: {
+          id: `demo-video-comp-${taskId}`,
+          taskId,
+          clickId: `demo-click-${taskId}`,
+          rewardPoints: 50,
+          status: 'VERIFIED',
+          completedAt: new Date().toISOString(),
+        },
+        session: {
+          sessionId,
+          accumulatedWatchSeconds: 5,
+          status: 'COMPLETED',
+        },
+        reconciled: false,
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: {
+      completion: {
+        id: string;
+        taskId: string;
+        clickId: string;
+        rewardPoints: number;
+        status: TaskCompletionStatus;
+        completedAt: string;
+      };
+      session: {
+        sessionId: string;
+        accumulatedWatchSeconds: number;
+        status: string;
+      };
+      reconciled?: boolean;
+    };
+  }>(`/tasks/${taskId}/video-session/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/article-session/start
+ * Starts or resumes a server-authoritative article reading session.
+ */
+export async function startArticleSessionApi(
+  taskId: string,
+  assignmentId?: string
+): Promise<{
+  success: boolean;
+  data: ArticleSessionData;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    const task = DEMO_TASKS.find((t) => t.id === taskId) || DEMO_TASKS[1];
+    const cfg = task.articleReadConfig!;
+    return {
+      success: true,
+      data: {
+        sessionId: `demo-article-session-${taskId}`,
+        taskId,
+        assignmentId: assignmentId || `demo-assignment-${taskId}`,
+        articleTitle: cfg.articleTitle,
+        articleContent: cfg.articleContent,
+        minReadDurationSeconds: cfg.minReadDurationSeconds,
+        minScrollPercentage: cfg.minScrollPercentage,
+        accumulatedReadSeconds: 0,
+        maxScrollPercentage: 0,
+        remainingReadSeconds: cfg.minReadDurationSeconds,
+        status: 'ACTIVE',
+        hasQuiz: true,
+        quizQuestion: cfg.comprehensionQuiz?.question,
+        quizOptions: cfg.comprehensionQuiz?.options,
+        quizAnswered: false,
+        quizAnswerCorrect: false,
+        quizAttempts: 0,
+        quizMaxAttempts: 3,
+        isQualified: false,
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: ArticleSessionData;
+  }>(`/tasks/${taskId}/article-session/start`, {
+    method: 'POST',
+    body: assignmentId ? JSON.stringify({ assignmentId }) : undefined,
+  });
+}
+
+/**
+ * POST /api/tasks/:id/article-session/progress
+ * Sends periodic reading progress and scroll telemetry to the server.
+ */
+export async function recordArticleProgressApi(
+  taskId: string,
+  payload: ArticleSessionProgressPayload
+): Promise<{
+  success: boolean;
+  data: ArticleSessionProgressResponse;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    const isQualified = (payload.scrollPercentage || 0) >= 80;
+    return {
+      success: true,
+      data: {
+        sessionId: payload.sessionId,
+        accumulatedReadSeconds: 10,
+        maxScrollPercentage: Math.max(80, payload.scrollPercentage || 0),
+        remainingReadSeconds: 0,
+        isQualified,
+        quizRequired: true,
+        quizAnswered: true,
+        quizAnswerCorrect: true,
+        status: 'ACTIVE',
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: ArticleSessionProgressResponse;
+  }>(`/tasks/${taskId}/article-session/progress`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /api/tasks/:id/article-session/:sessionId
+ * Retrieves the current authoritative status of an article reading session.
+ */
+export async function getArticleSessionStatusApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  data: ArticleSessionData;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    const task = DEMO_TASKS.find((t) => t.id === taskId) || DEMO_TASKS[1];
+    const cfg = task.articleReadConfig!;
+    return {
+      success: true,
+      data: {
+        sessionId,
+        taskId,
+        assignmentId: `demo-assignment-${taskId}`,
+        articleTitle: cfg.articleTitle,
+        articleContent: cfg.articleContent,
+        minReadDurationSeconds: cfg.minReadDurationSeconds,
+        minScrollPercentage: cfg.minScrollPercentage,
+        accumulatedReadSeconds: 10,
+        maxScrollPercentage: 100,
+        remainingReadSeconds: 0,
+        status: 'ACTIVE',
+        hasQuiz: true,
+        quizQuestion: cfg.comprehensionQuiz?.question,
+        quizOptions: cfg.comprehensionQuiz?.options,
+        quizAnswered: true,
+        quizAnswerCorrect: true,
+        quizAttempts: 1,
+        quizMaxAttempts: 3,
+        isQualified: true,
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: ArticleSessionData;
+  }>(`/tasks/${taskId}/article-session/${sessionId}`);
+}
+
+/**
+ * POST /api/tasks/:id/article-session/quiz
+ * Submits multiple-choice comprehension quiz answer.
+ */
+export async function submitArticleQuizAnswerApi(
+  taskId: string,
+  payload: ArticleQuizAnswerPayload
+): Promise<{
+  success: boolean;
+  data: ArticleQuizAnswerResponse;
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        success: true,
+        correct: true,
+        message: 'Correct! DNS translates domain names to IP addresses (Demo Mode).',
+        remainingAttempts: 1,
+        isQualified: true,
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: ArticleQuizAnswerResponse;
+  }>(`/tasks/${taskId}/article-session/quiz`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/article-session/verify
+ * Authoritatively verifies article read completion and awards promotional points.
+ */
+export async function verifyArticleReadApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  data: {
+    completion: {
+      id: string;
+      taskId: string;
+      clickId: string;
+      rewardPoints: number;
+      status: TaskCompletionStatus;
+      completedAt: string;
+    };
+    session: {
+      sessionId: string;
+      accumulatedReadSeconds: number;
+      maxScrollPercentage: number;
+      status: string;
+    };
+    reconciled?: boolean;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        completion: {
+          id: `demo-article-comp-${taskId}`,
+          taskId,
+          clickId: `demo-click-${taskId}`,
+          rewardPoints: 25,
+          status: 'VERIFIED',
+          completedAt: new Date().toISOString(),
+        },
+        session: {
+          sessionId,
+          accumulatedReadSeconds: 10,
+          maxScrollPercentage: 100,
+          status: 'COMPLETED',
+        },
+        reconciled: false,
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    data: {
+      completion: {
+        id: string;
+        taskId: string;
+        clickId: string;
+        rewardPoints: number;
+        status: TaskCompletionStatus;
+        completedAt: string;
+      };
+      session: {
+        sessionId: string;
+        accumulatedReadSeconds: number;
+        maxScrollPercentage: number;
+        status: string;
+      };
+      reconciled?: boolean;
+    };
+  }>(`/tasks/${taskId}/article-session/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  });
+}
+

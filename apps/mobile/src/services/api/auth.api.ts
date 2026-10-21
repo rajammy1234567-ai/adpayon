@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { UserProfile } from '@adpayon/shared';
+import { useDemoStore } from '../../store/demoStore';
 
 export interface BackendUser {
   id: string;
@@ -165,8 +166,31 @@ export async function logoutApi(refreshToken?: string): Promise<{ success: boole
 }
 
 export async function getProfileApi(): Promise<GetProfileResponse> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        user: {
+          id: 'demo_client_reviewer',
+          mobile: '+919876543210',
+          name: 'Client Demo Reviewer',
+          role: 'USER',
+          status: 'ACTIVE',
+          referralCode: 'DEMO777',
+          sponsorId: null,
+          directReferralsCount: 0,
+          metadata: {
+            language: 'en',
+            kycStatus: 'VERIFIED',
+          },
+          createdAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
   return apiClient<GetProfileResponse>('/auth/me', {
     method: 'GET',
     requiresAuth: true,
   });
 }
+

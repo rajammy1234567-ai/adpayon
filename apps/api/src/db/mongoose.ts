@@ -54,8 +54,11 @@ export async function connectMongo(): Promise<Connection | null> {
           dbName: env.MONGODB_DB_NAME,
           serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
           connectTimeoutMS: CONNECT_TIMEOUT_MS,
-          socketTimeoutMS: SOCKET_TIMEOUT_MS,
-          maxPoolSize: env.NODE_ENV === 'production' ? 50 : 10,
+          maxPoolSize: process.env.MONGODB_MAX_POOL_SIZE
+            ? parseInt(process.env.MONGODB_MAX_POOL_SIZE, 10)
+            : env.NODE_ENV === 'production'
+              ? 50
+              : 10,
           minPoolSize: 2,
           heartbeatFrequencyMS: 10000,
           retryWrites: true,
@@ -77,6 +80,28 @@ export async function connectMongo(): Promise<Connection | null> {
               `CRITICAL SECURITY FAILURE: Sandbox server expected 'adpayon_sandbox' but connected to '${activeDbName}'. Terminating.`
             );
           }
+        } else if (env.APP_ENV === 'test' || env.MONGODB_DB_NAME === 'adpayon_test') {
+          if (activeDbName !== 'adpayon_test') {
+            logger.fatal(
+              { activeDbName, expected: 'adpayon_test' },
+              'CRITICAL SECURITY VIOLATION: Test server connected to unexpected database! Failing closed.'
+            );
+            await mongoose.disconnect().catch(() => {});
+            throw new Error(
+              `CRITICAL SECURITY FAILURE: Test server expected 'adpayon_test' but connected to '${activeDbName}'. Terminating.`
+            );
+          }
+        } else if (env.APP_ENV === 'client_staging' || env.APP_ENV === 'staging' || env.MONGODB_DB_NAME === 'adpayon_client_staging') {
+          if (activeDbName !== 'adpayon_client_staging') {
+            logger.fatal(
+              { activeDbName, expected: 'adpayon_client_staging' },
+              'CRITICAL SECURITY VIOLATION: Client staging server connected to unexpected database! Failing closed.'
+            );
+            await mongoose.disconnect().catch(() => {});
+            throw new Error(
+              `CRITICAL SECURITY FAILURE: Client staging server expected 'adpayon_client_staging' but connected to '${activeDbName}'. Terminating.`
+            );
+          }
         } else if (env.NODE_ENV === 'development' && env.MONGODB_DB_NAME === 'adpayon_dev') {
           if (activeDbName !== 'adpayon_dev') {
             logger.fatal(
@@ -88,6 +113,19 @@ export async function connectMongo(): Promise<Connection | null> {
               `CRITICAL SECURITY FAILURE: Development server expected 'adpayon_dev' but connected to '${activeDbName}'. Terminating.`
             );
           }
+        }
+
+
+        // Universal Fail-Closed Database Assertion
+        if (activeDbName !== env.MONGODB_DB_NAME) {
+          logger.fatal(
+            { activeDbName, expected: env.MONGODB_DB_NAME },
+            `CRITICAL DATABASE IDENTITY MISMATCH: Expected '${env.MONGODB_DB_NAME}' but connected to '${activeDbName}'. Failing closed.`
+          );
+          await mongoose.disconnect().catch(() => {});
+          throw new Error(
+            `CRITICAL DATABASE IDENTITY MISMATCH: Expected '${env.MONGODB_DB_NAME}' but connected to '${activeDbName}'. Terminating.`
+          );
         }
 
         retryCount = 0;

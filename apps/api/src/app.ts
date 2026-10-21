@@ -17,6 +17,9 @@ import { errorHandler } from './middleware/errorHandler';
 export function createApp(): Application {
   const app = express();
 
+  // Trust first proxy (Render / reverse proxy edge) for accurate req.ip and rate limiting
+  app.set('trust proxy', 1);
+
   // Security Headers via Helmet
   app.use(
     helmet({

@@ -7,7 +7,8 @@ export type TaskEventType =
   | 'VERIFY_SUCCESS'
   | 'VERIFY_FAIL'
   | 'REJECT'
-  | 'EXPIRE';
+  | 'EXPIRE'
+  | 'STORE_VISIT';
 
 export interface ITaskEvent extends Document {
   _id: Types.ObjectId;
@@ -40,7 +41,7 @@ const taskEventSchema = new Schema<ITaskEvent>(
     },
     eventType: {
       type: String,
-      enum: ['START', 'HEARTBEAT', 'SUBMIT', 'VERIFY_SUCCESS', 'VERIFY_FAIL', 'REJECT', 'EXPIRE'],
+      enum: ['START', 'HEARTBEAT', 'SUBMIT', 'VERIFY_SUCCESS', 'VERIFY_FAIL', 'REJECT', 'EXPIRE', 'STORE_VISIT'],
       required: [true, 'Event type is required'],
     },
     payload: {

@@ -2,6 +2,12 @@ import { Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { Types } from 'mongoose';
+import {
+  appInstallConfigSchema,
+  videoWatchConfigSchema,
+  articleReadConfigSchema,
+  isSafePublicUrl,
+} from '@adpayon/shared';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { Campaign, Task, TaskCompletion, AdminAuditLog } from '../models';
 import { env } from '../config/env';
@@ -47,6 +53,133 @@ function formatZodError(error: z.ZodError) {
   };
 }
 
+export function validateTaskCategoryAndConfigs(
+  category: string | undefined,
+  verificationMethod: string | undefined,
+  configs: {
+    appInstallConfig?: any;
+    videoWatchConfig?: any;
+    articleReadConfig?: any;
+  },
+  ctx: z.RefinementCtx
+) {
+  if (!category) return;
+
+  if (category === 'APP_INSTALL') {
+    if (!configs.appInstallConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'appInstallConfig is required for APP_INSTALL tasks',
+        path: ['appInstallConfig'],
+      });
+    }
+    if (configs.videoWatchConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'videoWatchConfig must not be provided for APP_INSTALL tasks',
+        path: ['videoWatchConfig'],
+      });
+    }
+    if (configs.articleReadConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'articleReadConfig must not be provided for APP_INSTALL tasks',
+        path: ['articleReadConfig'],
+      });
+    }
+    if (verificationMethod === 'FIRST_PARTY_ACTION') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'APP_INSTALL tasks cannot use FIRST_PARTY_ACTION verification. Use AUTHENTICATED_WEBHOOK or MANUAL_REVIEW.',
+        path: ['verificationMethod'],
+      });
+    }
+    if (configs.appInstallConfig && verificationMethod) {
+      if (configs.appInstallConfig.attributionMethod === 'SIGNED_POSTBACK' && verificationMethod !== 'AUTHENTICATED_WEBHOOK') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'verificationMethod must be AUTHENTICATED_WEBHOOK when attributionMethod is SIGNED_POSTBACK',
+          path: ['verificationMethod'],
+        });
+      }
+      if (configs.appInstallConfig.attributionMethod === 'MANUAL_REVIEW' && verificationMethod !== 'MANUAL_REVIEW') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'verificationMethod must be MANUAL_REVIEW when attributionMethod is MANUAL_REVIEW',
+          path: ['verificationMethod'],
+        });
+      }
+    }
+  } else if (category === 'VIDEO_WATCH') {
+    if (!configs.videoWatchConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'videoWatchConfig is required for VIDEO_WATCH tasks',
+        path: ['videoWatchConfig'],
+      });
+    }
+    if (configs.appInstallConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'appInstallConfig must not be provided for VIDEO_WATCH tasks',
+        path: ['appInstallConfig'],
+      });
+    }
+    if (configs.articleReadConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'articleReadConfig must not be provided for VIDEO_WATCH tasks',
+        path: ['articleReadConfig'],
+      });
+    }
+  } else if (category === 'ARTICLE_READ') {
+    if (!configs.articleReadConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'articleReadConfig is required for ARTICLE_READ tasks',
+        path: ['articleReadConfig'],
+      });
+    }
+    if (configs.appInstallConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'appInstallConfig must not be provided for ARTICLE_READ tasks',
+        path: ['appInstallConfig'],
+      });
+    }
+    if (configs.videoWatchConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'videoWatchConfig must not be provided for ARTICLE_READ tasks',
+        path: ['videoWatchConfig'],
+      });
+    }
+  } else {
+    // Legacy categories: IN_APP_ACTION, PARTNER_WEBHOOK, SURVEY, MANUAL_VERIFY
+    if (configs.appInstallConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'appInstallConfig must not be provided for legacy task category',
+        path: ['appInstallConfig'],
+      });
+    }
+    if (configs.videoWatchConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'videoWatchConfig must not be provided for legacy task category',
+        path: ['videoWatchConfig'],
+      });
+    }
+    if (configs.articleReadConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'articleReadConfig must not be provided for legacy task category',
+        path: ['articleReadConfig'],
+      });
+    }
+  }
+}
+
 const createCampaignSchema = z.object({
   name: z.string().trim().min(3, 'Campaign name must contain at least 3 characters').max(120, 'Campaign name cannot exceed 120 characters'),
   advertiserName: z.string().trim().min(2, 'Advertiser name must contain at least 2 characters').max(120, 'Advertiser name cannot exceed 120 characters'),
@@ -72,46 +205,108 @@ const updateCampaignSchema = z.object({
   endDate: z.preprocess(emptyToUndefined, z.string().datetime('End date must be a valid ISO datetime string').optional()),
 });
 
-const createTaskSchema = z.object({
-  campaignId: z.string().refine((id) => Types.ObjectId.isValid(id), 'Invalid campaign ID'),
-  title: z.string().trim().min(3, 'Title must contain at least 3 characters').max(150, 'Title cannot exceed 150 characters'),
-  description: z.preprocess(emptyToUndefined, z.string().min(3, 'Description must contain at least 3 characters').max(1000, 'Description cannot exceed 1000 characters').optional()),
-  instructions: z.preprocess(emptyToUndefined, z.string().max(2000, 'Instructions cannot exceed 2000 characters').optional()),
-  category: z.enum(['IN_APP_ACTION', 'PARTNER_WEBHOOK', 'SURVEY', 'MANUAL_VERIFY']),
-  verificationMethod: z.enum(['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW']),
-  rewardPoints: z.number().int().min(1, 'Reward points must be at least 1'),
-  totalCap: z.number().int().min(1, 'Total cap must be at least 1'),
-  dailyCapPerUser: z.number().int().min(1, 'Daily cap per user must be at least 1').default(1),
-  dwellTimeSeconds: z.number().int().min(0, 'Dwell time cannot be negative').default(0),
-  targeting: z
-    .object({
-      minAncestryDepth: z.number().int().min(0).optional(),
-      kycRequired: z.boolean().optional(),
-      allowedStates: z.array(z.string()).optional(),
-    })
-    .optional(),
-  externalActionUrl: z.preprocess(emptyToUndefined, z.string().url('Partner URL must be a valid HTTP/HTTPS URL').max(500, 'URL cannot exceed 500 characters').optional()),
-});
+const createTaskSchema = z
+  .object({
+    campaignId: z.string().refine((id) => Types.ObjectId.isValid(id), 'Invalid campaign ID'),
+    title: z.string().trim().min(3, 'Title must contain at least 3 characters').max(150, 'Title cannot exceed 150 characters'),
+    description: z.preprocess(emptyToUndefined, z.string().min(3, 'Description must contain at least 3 characters').max(1000, 'Description cannot exceed 1000 characters').optional()),
+    instructions: z.preprocess(emptyToUndefined, z.string().max(2000, 'Instructions cannot exceed 2000 characters').optional()),
+    category: z.enum([
+      'IN_APP_ACTION',
+      'PARTNER_WEBHOOK',
+      'SURVEY',
+      'MANUAL_VERIFY',
+      'APP_INSTALL',
+      'VIDEO_WATCH',
+      'ARTICLE_READ',
+    ]),
+    verificationMethod: z.enum(['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW']),
+    rewardPoints: z.number().int().min(1, 'Reward points must be at least 1'),
+    totalCap: z.number().int().min(1, 'Total cap must be at least 1'),
+    dailyCapPerUser: z.number().int().min(1, 'Daily cap per user must be at least 1').default(1),
+    dwellTimeSeconds: z.number().int().min(0, 'Dwell time cannot be negative').default(0),
+    targeting: z
+      .object({
+        minAncestryDepth: z.number().int().min(0).optional(),
+        kycRequired: z.boolean().optional(),
+        allowedStates: z.array(z.string()).optional(),
+      })
+      .optional(),
+    externalActionUrl: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .max(500, 'URL cannot exceed 500 characters')
+        .refine(
+          (val) => {
+            if (!val) return true;
+            const sanitized = val.replace(/\{click_id\}/gi, 'token123').replace(/\{user_id\}/gi, 'usr123');
+            return isSafePublicUrl(sanitized).valid;
+          },
+          { message: 'Partner URL must be a valid, public HTTP/HTTPS URL' }
+        )
+        .optional()
+    ),
+    appInstallConfig: appInstallConfigSchema.optional(),
+    videoWatchConfig: videoWatchConfigSchema.optional(),
+    articleReadConfig: articleReadConfigSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    validateTaskCategoryAndConfigs(data.category, data.verificationMethod, data, ctx);
+  });
 
-const updateTaskSchema = z.object({
-  title: z.string().trim().min(3, 'Title must contain at least 3 characters').max(150, 'Title cannot exceed 150 characters').optional(),
-  description: z.preprocess(emptyToUndefined, z.string().min(3, 'Description must contain at least 3 characters').max(1000, 'Description cannot exceed 1000 characters').optional()),
-  instructions: z.preprocess(emptyToUndefined, z.string().max(2000, 'Instructions cannot exceed 2000 characters').optional()),
-  category: z.enum(['IN_APP_ACTION', 'PARTNER_WEBHOOK', 'SURVEY', 'MANUAL_VERIFY']).optional(),
-  verificationMethod: z.enum(['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW']).optional(),
-  rewardPoints: z.number().int().min(1, 'Reward points must be at least 1').optional(),
-  totalCap: z.number().int().min(1, 'Total cap must be at least 1').optional(),
-  dailyCapPerUser: z.number().int().min(1, 'Daily cap per user must be at least 1').optional(),
-  dwellTimeSeconds: z.number().int().min(0, 'Dwell time cannot be negative').optional(),
-  targeting: z
-    .object({
-      minAncestryDepth: z.number().int().min(0).optional(),
-      kycRequired: z.boolean().optional(),
-      allowedStates: z.array(z.string()).optional(),
-    })
-    .optional(),
-  externalActionUrl: z.preprocess(emptyToUndefined, z.string().url('Partner URL must be a valid HTTP/HTTPS URL').max(500, 'URL cannot exceed 500 characters').optional()),
-});
+const updateTaskSchema = z
+  .object({
+    title: z.string().trim().min(3, 'Title must contain at least 3 characters').max(150, 'Title cannot exceed 150 characters').optional(),
+    description: z.preprocess(emptyToUndefined, z.string().min(3, 'Description must contain at least 3 characters').max(1000, 'Description cannot exceed 1000 characters').optional()),
+    instructions: z.preprocess(emptyToUndefined, z.string().max(2000, 'Instructions cannot exceed 2000 characters').optional()),
+    category: z
+      .enum([
+        'IN_APP_ACTION',
+        'PARTNER_WEBHOOK',
+        'SURVEY',
+        'MANUAL_VERIFY',
+        'APP_INSTALL',
+        'VIDEO_WATCH',
+        'ARTICLE_READ',
+      ])
+      .optional(),
+    verificationMethod: z.enum(['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW']).optional(),
+    rewardPoints: z.number().int().min(1, 'Reward points must be at least 1').optional(),
+    totalCap: z.number().int().min(1, 'Total cap must be at least 1').optional(),
+    dailyCapPerUser: z.number().int().min(1, 'Daily cap per user must be at least 1').optional(),
+    dwellTimeSeconds: z.number().int().min(0, 'Dwell time cannot be negative').optional(),
+    targeting: z
+      .object({
+        minAncestryDepth: z.number().int().min(0).optional(),
+        kycRequired: z.boolean().optional(),
+        allowedStates: z.array(z.string()).optional(),
+      })
+      .optional(),
+    externalActionUrl: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .max(500, 'URL cannot exceed 500 characters')
+        .refine(
+          (val) => {
+            if (!val) return true;
+            const sanitized = val.replace(/\{click_id\}/gi, 'token123').replace(/\{user_id\}/gi, 'usr123');
+            return isSafePublicUrl(sanitized).valid;
+          },
+          { message: 'Partner URL must be a valid, public HTTP/HTTPS URL' }
+        )
+        .optional()
+    ),
+    appInstallConfig: appInstallConfigSchema.optional(),
+    videoWatchConfig: videoWatchConfigSchema.optional(),
+    articleReadConfig: articleReadConfigSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.category) {
+      validateTaskCategoryAndConfigs(data.category, data.verificationMethod, data, ctx);
+    }
+  });
 
 const reviewCompletionSchema = z.object({
   status: z.enum(['VERIFIED', 'REJECTED']),
@@ -519,6 +714,9 @@ export async function createTask(req: AuthenticatedRequest, res: Response): Prom
         dailyCapPerUser: task.dailyCapPerUser,
         targeting: task.targeting,
         dwellTimeSeconds: task.dwellTimeSeconds,
+        appInstallConfig: task.appInstallConfig,
+        videoWatchConfig: task.videoWatchConfig,
+        articleReadConfig: task.articleReadConfig,
         createdAt: task.createdAt,
       },
     },
@@ -586,6 +784,9 @@ export async function listTasks(req: AuthenticatedRequest, res: Response): Promi
           dailyCapPerUser: t.dailyCapPerUser,
           targeting: t.targeting,
           dwellTimeSeconds: t.dwellTimeSeconds,
+          appInstallConfig: t.appInstallConfig,
+          videoWatchConfig: t.videoWatchConfig,
+          articleReadConfig: t.articleReadConfig,
           createdAt: t.createdAt,
         };
       }),
@@ -663,6 +864,43 @@ export async function updateTask(req: AuthenticatedRequest, res: Response): Prom
     }
   }
 
+  const effectiveCategory = parsed.data.category || task.category;
+  const effectiveVerificationMethod = parsed.data.verificationMethod || task.verificationMethod;
+  const effectiveConfigs = {
+    appInstallConfig: parsed.data.appInstallConfig !== undefined ? parsed.data.appInstallConfig : task.appInstallConfig,
+    videoWatchConfig: parsed.data.videoWatchConfig !== undefined ? parsed.data.videoWatchConfig : task.videoWatchConfig,
+    articleReadConfig: parsed.data.articleReadConfig !== undefined ? parsed.data.articleReadConfig : task.articleReadConfig,
+  };
+
+  const validationErrors: { path: string; message: string }[] = [];
+  const mockCtx: any = {
+    addIssue: (issue: any) => {
+      validationErrors.push({
+        path: issue.path.join('.'),
+        message: issue.message,
+      });
+    },
+  };
+  validateTaskCategoryAndConfigs(effectiveCategory, effectiveVerificationMethod, effectiveConfigs, mockCtx);
+
+  if (validationErrors.length > 0) {
+    const fieldErrors: Record<string, string> = {};
+    for (const err of validationErrors) {
+      if (!fieldErrors[err.path]) {
+        fieldErrors[err.path] = err.message;
+      }
+    }
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: `${validationErrors[0].path}: ${validationErrors[0].message}`,
+        fieldErrors,
+      },
+    });
+    return;
+  }
+
   Object.assign(task, parsed.data);
   await task.save();
 
@@ -682,9 +920,14 @@ export async function updateTask(req: AuthenticatedRequest, res: Response): Prom
         id: task._id.toString(),
         title: task.title,
         status: task.status,
+        category: task.category,
+        verificationMethod: task.verificationMethod,
         rewardPoints: task.rewardPoints,
         totalCap: task.totalCap,
         targeting: task.targeting,
+        appInstallConfig: task.appInstallConfig,
+        videoWatchConfig: task.videoWatchConfig,
+        articleReadConfig: task.articleReadConfig,
         updatedAt: task.updatedAt,
       },
     },
@@ -1122,6 +1365,9 @@ export async function getTaskDetails(req: AuthenticatedRequest, res: Response): 
         targeting: task.targeting,
         externalActionUrl: task.externalActionUrl,
         instructions: task.instructions,
+        appInstallConfig: task.appInstallConfig,
+        videoWatchConfig: task.videoWatchConfig,
+        articleReadConfig: task.articleReadConfig,
         status: task.status,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
