@@ -42,6 +42,19 @@ export interface RegisterResponse {
     userId: string;
     mobile: string;
     status: string;
+    testOtp?: string;
+  };
+}
+
+export interface DemoEnrollResponse {
+  success: boolean;
+  message: string;
+  data: {
+    userId: string;
+    mobile: string;
+    displayId: string;
+    testOtp: string;
+    status: string;
   };
 }
 
@@ -133,6 +146,13 @@ export async function registerApi(payload: RegisterPayload): Promise<RegisterRes
   return apiClient<RegisterResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
+    requiresAuth: false,
+  });
+}
+
+export async function enrollClientDemoApi(): Promise<DemoEnrollResponse> {
+  return apiClient<DemoEnrollResponse>('/auth/client-staging/demo-enroll', {
+    method: 'POST',
     requiresAuth: false,
   });
 }

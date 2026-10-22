@@ -23,6 +23,7 @@
     "bootstrap:admin:sandbox": "npm run --workspace=@adpayon/api bootstrap:admin:sandbox",
     "bootstrap:client-staging": "npm run --workspace=@adpayon/api bootstrap:client-staging --",
     "migrate:staging-mobile-index": "npm run --workspace=@adpayon/api migrate:staging-mobile-index --",
+    "otp:staging-lookup": "npm run --workspace=@adpayon/api otp:staging-lookup --",
     "admin": "npm run --workspace=@adpayon/admin dev",
     "admin:sandbox": "npm run --workspace=@adpayon/admin dev:sandbox",
     "build:shared": "npm run --workspace=@adpayon/shared build",

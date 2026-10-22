@@ -8,6 +8,7 @@ import {
   logout,
   getProfile,
   getDevOtpEndpoint,
+  startClientDemoReview,
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 import { authRateLimiter, otpRateLimiter } from '../middleware/rateLimiters';
@@ -21,6 +22,9 @@ authRouter.post('/auth/otp/verify', otpRateLimiter, verifyOtp);
 authRouter.post('/auth/login', authRateLimiter, login);
 authRouter.post('/auth/refresh', refresh);
 authRouter.post('/auth/logout', logout);
+
+// Client-Staging Demo Review Enrollment (in-app test OTP)
+authRouter.post('/auth/client-staging/demo-enroll', authRateLimiter, startClientDemoReview);
 
 // Protected User Profile
 authRouter.get('/auth/me', requireAuth, getProfile);

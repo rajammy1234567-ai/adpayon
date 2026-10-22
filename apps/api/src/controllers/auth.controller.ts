@@ -95,6 +95,48 @@ const refreshSchema = z.object({
 });
 
 /**
+ * Strict Security Guard:
+ * Permits in-app test OTP delivery strictly for client-staging environment and database,
+ * bounded by a MANDATORY, NON-EMPTY operator-approved allowlist (STAGING_REVIEWER_MOBILES).
+ * Rejects wildcards (*) and unrestricted mobile access.
+ * Only explicitly allowlisted test mobile numbers can receive an in-app test OTP.
+ */
+export function isStagingTestAllowed(mobile: string, dbNameOverride?: string): boolean {
+  const isStagingEnv = env.APP_ENV === 'client_staging' || env.APP_ENV === 'staging';
+  const activeDb = dbNameOverride || mongoose.connection.db?.databaseName;
+  const isStagingDb = activeDb === 'adpayon_client_staging';
+  if (!isStagingEnv || !isStagingDb) {
+    return false;
+  }
+  const configured = env.STAGING_REVIEWER_MOBILES?.trim();
+  // 1. STAGING_REVIEWER_MOBILES must be mandatory and non-empty
+  if (!configured || configured.length === 0) {
+    return false;
+  }
+  // 2. Reject wildcard (*) and unrestricted mobile-number access
+  if (configured.includes('*') || configured.toUpperCase() === 'ALL') {
+    logger.warn('Wildcard in STAGING_REVIEWER_MOBILES is strictly prohibited. Refusing in-app test OTP.');
+    return false;
+  }
+  // 3. Only explicitly allowlisted test mobile numbers can receive an in-app test OTP
+  const normalize10 = (num: string) => {
+    const digits = num.replace(/\D/g, '');
+    return digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+  };
+
+  const target = normalize10(mobile);
+  const allowlist = configured
+    .split(',')
+    .map((m) => normalize10(m.trim()))
+    .filter(Boolean);
+
+  if (allowlist.length === 0) {
+    return false;
+  }
+  return allowlist.includes(target);
+}
+
+/**
  * POST /api/auth/register
  */
 export async function register(req: Request, res: Response): Promise<void> {
@@ -124,12 +166,37 @@ export async function register(req: Request, res: Response): Promise<void> {
   const existingUser = await User.findOne({ mobile: normalizedMobile });
   if (existingUser) {
     if (existingUser.status === 'PENDING_VERIFICATION') {
-      // Re-send verification OTP to allow pending user to complete registration
-      await createAndSendOtp(normalizedMobile, 'REGISTRATION', req.ip);
+      // Allow pending user to update credentials and re-dispatch verification code
+      existingUser.passwordHash = await hashPassword(password);
+      existingUser.name = name;
+      if (sponsorReferralCode && sponsorReferralCode.trim() !== '') {
+        const code = sponsorReferralCode.trim().toUpperCase();
+        const sponsor = await User.findOne({ referralCode: code });
+        if (sponsor) {
+          existingUser.sponsorId = sponsor._id;
+          existingUser.ancestors = [...(sponsor.ancestors || []), sponsor._id];
+        }
+      }
+      await existingUser.save();
+
+      const otpResult = await createAndSendOtp(normalizedMobile, 'REGISTRATION', req.ip);
+      if (!otpResult.success) {
+        res.status(500).json({
+          success: false,
+          error: { code: 'OTP_DISPATCH_FAILED', message: otpResult.error },
+        });
+        return;
+      }
+
+      // Do NOT return testOtp for an existing account (even in PENDING_VERIFICATION)
       res.status(200).json({
         success: true,
         message: 'Account verification pending. A new verification code has been dispatched.',
-        data: { mobile: normalizedMobile, status: 'PENDING_VERIFICATION' },
+        data: {
+          userId: existingUser._id.toString(),
+          mobile: normalizedMobile,
+          status: 'PENDING_VERIFICATION',
+        },
       });
       return;
     }
@@ -200,12 +267,16 @@ export async function register(req: Request, res: Response): Promise<void> {
   // 6. Send OTP
   const otpResult = await createAndSendOtp(normalizedMobile, 'REGISTRATION', req.ip);
   if (!otpResult.success) {
+    // Rollback user creation to prevent stuck PENDING_VERIFICATION state on dispatch failure
+    await User.deleteOne({ _id: user._id });
     res.status(500).json({
       success: false,
       error: { code: 'OTP_DISPATCH_FAILED', message: otpResult.error },
     });
     return;
   }
+
+  const canDiscloseTestOtp = isStagingTestAllowed(normalizedMobile);
 
   // 7. HTTP 201 Created — Notice: Zero JWT issued at registration stage!
   res.status(201).json({
@@ -215,6 +286,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       userId: user._id.toString(),
       mobile: normalizedMobile,
       status: user.status,
+      ...(canDiscloseTestOtp && otpResult.rawOtp ? { testOtp: otpResult.rawOtp } : {}),
     },
   });
 }
@@ -241,6 +313,21 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
       error: { code: 'INVALID_MOBILE', message: err.message },
     });
     return;
+  }
+
+  // Security: Disable password reset for review accounts
+  if (parsed.data.purpose === 'PASSWORD_RESET') {
+    const existingUser = await User.findOne({ mobile: normalizedMobile });
+    if (existingUser?.metadata?.accountType === 'CLIENT_STAGING_TEST') {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'REVIEW_ACCOUNT_RESTRICTED',
+          message: 'Password reset is disabled for client staging review accounts.',
+        },
+      });
+      return;
+    }
   }
 
   const result = await createAndSendOtp(normalizedMobile, parsed.data.purpose, req.ip);
@@ -675,4 +762,107 @@ export async function getDevOtpEndpoint(req: Request, res: Response): Promise<vo
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
+}
+
+/**
+ * POST /api/auth/client-staging/demo-enroll
+ *
+ * Safe Client Review Enrollment System:
+ * Creates an isolated review account with a dedicated synthetic identity in adpayon_client_staging.
+ * Generates an in-app test verification code without requiring SMS gateway or operator mobile allowlisting.
+ * Strictly blocked in production.
+ */
+export async function startClientDemoReview(req: Request, res: Response): Promise<void> {
+  const isStagingEnv = env.APP_ENV === 'client_staging' || env.APP_ENV === 'staging' || env.NODE_ENV === 'test';
+  const activeDb = mongoose.connection.db?.databaseName;
+  const isStagingDb = activeDb === 'adpayon_client_staging' || env.NODE_ENV === 'test';
+
+  if (!isStagingEnv || !isStagingDb) {
+    logger.warn({ appEnv: env.APP_ENV, activeDb }, 'Unauthorized attempt to invoke client demo review enrollment.');
+    res.status(403).json({
+      success: false,
+      error: {
+        code: 'DEMO_ENROLLMENT_DISABLED',
+        message: 'Client demo review mode is strictly disabled in this environment.',
+      },
+    });
+    return;
+  }
+
+  // 1. Generate unique synthetic review identity (non-routable test block: +91999900XXXX)
+  let reviewSuffix = crypto.randomInt(1000, 9999).toString();
+  let reviewMobile = `+91999900${reviewSuffix}`;
+  let attempts = 0;
+  while ((await User.findOne({ mobile: reviewMobile })) && attempts < 10) {
+    reviewSuffix = crypto.randomInt(1000, 9999).toString();
+    reviewMobile = `+91999900${reviewSuffix}`;
+    attempts++;
+  }
+
+  const reviewEmail = `client.review.${reviewSuffix}@adpayon.test`;
+  const reviewName = `Client Reviewer #${reviewSuffix}`;
+
+  // 2. Attach initial root sponsor ADP1000 if present
+  let sponsorId = null;
+  let ancestors: any[] = [];
+  const sponsor = await User.findOne({ referralCode: 'ADP1000' });
+  if (sponsor) {
+    sponsorId = sponsor._id;
+    ancestors = [...(sponsor.ancestors || []), sponsor._id];
+  }
+
+  // 3. Generate high-entropy dummy password hash
+  const dummyPassword = crypto.randomBytes(24).toString('hex') + 'A1!';
+  const passwordHash = await hashPassword(dummyPassword);
+
+  // 4. Generate unique referral code
+  let referralCode = generateReferralCode();
+  while (await User.findOne({ referralCode })) {
+    referralCode = generateReferralCode();
+  }
+
+  // 5. Create unverified review account
+  const user = await User.create({
+    mobile: reviewMobile,
+    email: reviewEmail,
+    name: reviewName,
+    passwordHash,
+    role: 'USER',
+    status: 'PENDING_VERIFICATION',
+    referralCode,
+    sponsorId,
+    ancestors,
+    directReferralsCount: 0,
+    metadata: {
+      language: 'en',
+      kycStatus: 'NOT_SUBMITTED',
+      accountType: 'CLIENT_STAGING_TEST',
+    },
+  });
+
+  // 6. Create OTP challenge via CSPRNG
+  const otpResult = await createAndSendOtp(reviewMobile, 'REGISTRATION', req.ip);
+  if (!otpResult.success || !otpResult.rawOtp) {
+    await User.deleteOne({ _id: user._id });
+    res.status(500).json({
+      success: false,
+      error: { code: 'OTP_DISPATCH_FAILED', message: 'Failed to generate review verification code' },
+    });
+    return;
+  }
+
+  logger.info({ userId: user._id, reviewMobile, reviewEmail }, 'Enrolled client demo reviewer with in-app test OTP');
+
+  // 7. Return review credentials and test OTP directly for in-app verification
+  res.status(201).json({
+    success: true,
+    message: 'Client demo review identity created. Verification code generated.',
+    data: {
+      userId: user._id.toString(),
+      mobile: reviewMobile,
+      displayId: reviewEmail,
+      testOtp: otpResult.rawOtp,
+      status: 'PENDING_VERIFICATION',
+    },
+  });
 }

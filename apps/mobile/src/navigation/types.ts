@@ -13,7 +13,7 @@ export type RootStackParamList = {
   Intro: undefined;
   OTPLogin: undefined;
   Signup: undefined;
-  OTPVerify: { mobile: string; mode: 'SIGNUP' | 'LOGIN' | 'RESET' };
+  OTPVerify: { mobile: string; mode: 'SIGNUP' | 'LOGIN' | 'RESET'; testOtp?: string };
   ForgotPassword: undefined;
   OnboardingChallenges: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList>;

@@ -17,7 +17,7 @@ import { Input } from '../../components/ui/Input';
 import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
-import { loginApi, sendOtpApi } from '../../services/api/auth.api';
+import { loginApi, sendOtpApi, enrollClientDemoApi } from '../../services/api/auth.api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OTPLogin'>;
 
@@ -31,7 +31,29 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOtpLoading, setIsOtpLoading] = useState(false);
+  const [isDemoEnrolling, setIsDemoEnrolling] = useState(false);
   const [errors, setErrors] = useState<{ mobile?: string; password?: string; general?: string }>({});
+
+  const handleTryClientDemo = async () => {
+    setIsDemoEnrolling(true);
+    setErrors({});
+    try {
+      const res = await enrollClientDemoApi();
+      if (res.success && res.data) {
+        navigation.navigate('OTPVerify', {
+          mobile: res.data.mobile,
+          mode: 'SIGNUP',
+          testOtp: res.data.testOtp,
+        });
+      }
+    } catch (err: any) {
+      setErrors({
+        general: err.message || 'Client demo review mode unavailable. Please contact the administrator.',
+      });
+    } finally {
+      setIsDemoEnrolling(false);
+    }
+  };
 
   const validate = () => {
     const err: { mobile?: string; password?: string } = {};
@@ -122,6 +144,28 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
             </View>
             <Text style={styles.title}>{t('auth.welcome')}</Text>
             <Text style={styles.subtitle}>{t('auth.loginSubtitle')}</Text>
+          </View>
+
+          {/* Try Client Demo Banner (Client Staging Review Flow) */}
+          <View style={styles.clientDemoCard}>
+            <View style={styles.clientDemoHeaderRow}>
+              <View style={styles.clientDemoBadge}>
+                <Text style={styles.clientDemoBadgeText}>CLIENT STAGING REVIEW</Text>
+              </View>
+              <Text style={styles.clientDemoNoSms}>No SMS Required</Text>
+            </View>
+            <Text style={styles.clientDemoTitle}>Explore as Client Reviewer</Text>
+            <Text style={styles.clientDemoDesc}>
+              Instant access with an in-app test verification code. Test full app features without SMS gateway setup.
+            </Text>
+            <Button
+              title={isDemoEnrolling ? 'Creating Review Session...' : '⚡ Try Client Demo'}
+              onPress={handleTryClientDemo}
+              variant="primary"
+              size="md"
+              isLoading={isDemoEnrolling}
+              style={styles.clientDemoBtn}
+            />
           </View>
 
           {/* Form Card */}
@@ -280,7 +324,53 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
+  },
+  clientDemoCard: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1.5,
+    borderColor: THEME.colors.gold,
+    borderRadius: THEME.borderRadius.lg,
+    padding: THEME.spacing.md,
+    marginBottom: 20,
+  },
+  clientDemoHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  clientDemoBadge: {
+    backgroundColor: THEME.colors.gold,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  clientDemoBadgeText: {
+    color: '#000000',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  clientDemoNoSms: {
+    color: THEME.colors.emerald,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  clientDemoTitle: {
+    color: THEME.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  clientDemoDesc: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  clientDemoBtn: {
+    width: '100%',
   },
   iconCircle: {
     width: 68,

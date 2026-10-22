@@ -23,9 +23,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerify'>;
 
 export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
   const { t } = useTranslation();
-  const { mobile, mode } = route.params;
+  const { mobile, mode, testOtp } = route.params;
   const { setAuthSession } = useAuthStore();
   const [otp, setOtp] = useState('');
+  const [currentTestOtp, setCurrentTestOtp] = useState<string | undefined>(testOtp);
   const [timer, setTimer] = useState(45);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -116,6 +117,26 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.subtitle}>
             {t('auth.otpSentTo')} +91 {mobile}
           </Text>
+
+          {currentTestOtp ? (
+            <View style={styles.stagingBanner}>
+              <View style={styles.stagingBadge}>
+                <Text style={styles.stagingBadgeText}>TEST OTP — Client Staging Only</Text>
+              </View>
+              <Text style={styles.stagingOtpCode}>{currentTestOtp}</Text>
+              <Text style={styles.stagingWarning}>TEST OTP — NOT FOR PRODUCTION</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.stagingAutoFillBtn}
+                onPress={() => {
+                  setOtp(currentTestOtp);
+                  setError('');
+                }}
+              >
+                <Text style={styles.stagingAutoFillText}>⚡ Tap to Auto-fill Code</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <Card variant="elevated" style={styles.card}>
             <Text style={styles.otpLabel}>{t('auth.enterOtp')}</Text>
@@ -295,5 +316,57 @@ const styles = StyleSheet.create({
     color: THEME.colors.emerald,
     fontWeight: '800',
     fontSize: 14,
+  },
+  stagingBanner: {
+    width: '100%',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1.5,
+    borderColor: THEME.colors.gold,
+    borderRadius: THEME.borderRadius.lg,
+    padding: THEME.spacing.md,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  stagingBadge: {
+    backgroundColor: THEME.colors.gold,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  stagingBadgeText: {
+    color: '#000000',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  stagingOtpCode: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: THEME.colors.goldLight,
+    letterSpacing: 6,
+    marginVertical: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  stagingWarning: {
+    color: THEME.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  stagingAutoFillBtn: {
+    backgroundColor: THEME.colors.surfaceElevated,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: THEME.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: THEME.colors.gold,
+  },
+  stagingAutoFillText: {
+    color: THEME.colors.goldLight,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

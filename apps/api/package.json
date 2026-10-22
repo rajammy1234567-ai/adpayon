@@ -20,7 +20,8 @@
     "bootstrap:admin:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/bootstrapAdminSandbox.js",
     "bootstrap:client-staging": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapClientStagingReviewers.js",
     "bootstrap:staging-reviewers": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapClientStagingReviewers.js",
-    "migrate:staging-mobile-index": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.client_staging dist/src/scripts/migrateStagingMobileIndex.js"
+    "migrate:staging-mobile-index": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.client_staging dist/src/scripts/migrateStagingMobileIndex.js",
+    "otp:staging-lookup": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/lookupStagingReviewerOtp.js"
   },
   "dependencies": {
     "@adpayon/shared": "file:../../packages/shared",

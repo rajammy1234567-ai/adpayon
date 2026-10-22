@@ -78,8 +78,47 @@ const envSchema = z
       .string()
       .default('true')
       .transform((val) => val === 'true' || val === '1'),
+    SMS_PROVIDER: z.enum(['dev', 'msg91', 'mock', 'staging_manual']).default('dev'),
+    MSG91_AUTH_KEY: z.string().optional(),
+    MSG91_DLT_TE_ID: z.string().optional(),
+    MSG91_SENDER_ID: z.string().optional(),
+    MSG91_FLOW_ID: z.string().optional(),
+    STAGING_REVIEWER_MOBILES: z.string().optional(),
+    STAGING_OPERATOR_SECRET: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.SMS_PROVIDER === 'staging_manual') {
+      if (data.APP_ENV !== 'client_staging' && data.APP_ENV !== 'staging') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SMS_PROVIDER'],
+          message: 'SMS_PROVIDER=staging_manual is strictly permitted only in client_staging environment',
+        });
+      }
+      if (!data.STAGING_OPERATOR_SECRET || data.STAGING_OPERATOR_SECRET.length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STAGING_OPERATOR_SECRET'],
+          message: 'STAGING_OPERATOR_SECRET (>=32 chars) is required when SMS_PROVIDER is staging_manual',
+        });
+      }
+    }
+    if (data.SMS_PROVIDER === 'msg91') {
+      if (!data.MSG91_AUTH_KEY || data.MSG91_AUTH_KEY.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MSG91_AUTH_KEY'],
+          message: 'MSG91_AUTH_KEY is strictly required when SMS_PROVIDER is msg91',
+        });
+      }
+      if (!data.MSG91_FLOW_ID && !data.MSG91_DLT_TE_ID) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MSG91_FLOW_ID'],
+          message: 'Either MSG91_FLOW_ID or MSG91_DLT_TE_ID is required when SMS_PROVIDER is msg91',
+        });
+      }
+    }
     if (data.NODE_ENV === 'production') {
       if (!data.MONGODB_URI || data.MONGODB_URI.trim() === '') {
         ctx.addIssue({

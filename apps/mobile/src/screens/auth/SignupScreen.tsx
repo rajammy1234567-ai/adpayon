@@ -16,7 +16,7 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { THEME } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/types';
-import { registerApi } from '../../services/api/auth.api';
+import { registerApi, enrollClientDemoApi } from '../../services/api/auth.api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
@@ -32,7 +32,27 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
   );
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDemoEnrolling, setIsDemoEnrolling] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleTryClientDemo = async () => {
+    setIsDemoEnrolling(true);
+    setErrors({});
+    try {
+      const res = await enrollClientDemoApi();
+      if (res.success && res.data) {
+        navigation.navigate('OTPVerify', {
+          mobile: res.data.mobile,
+          mode: 'SIGNUP',
+          testOtp: res.data.testOtp,
+        });
+      }
+    } catch (err: any) {
+      setErrors({ terms: err.message || 'Client demo review mode unavailable.' });
+    } finally {
+      setIsDemoEnrolling(false);
+    }
+  };
 
   const validate = () => {
     const err: Record<string, string> = {};
@@ -73,7 +93,7 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
     setErrors({});
 
     try {
-      await registerApi({
+      const res = await registerApi({
         name: name.trim(),
         mobile: mobile.trim(),
         password,
@@ -84,6 +104,7 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
       navigation.navigate('OTPVerify', {
         mobile: mobile.trim(),
         mode: 'SIGNUP',
+        testOtp: res.data?.testOtp,
       });
     } catch (err: any) {
       if (err.code === 'MOBILE_EXISTS') {
@@ -112,6 +133,18 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
               Join AdPayOn to build your referral network and unlock verified rewards
             </Text>
           </View>
+
+          {/* Quick Demo Option for Client Reviewers */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.demoLinkBox}
+            onPress={handleTryClientDemo}
+            disabled={isDemoEnrolling}
+          >
+            <Text style={styles.demoLinkText}>
+              {isDemoEnrolling ? 'Loading Client Demo...' : '⚡ Testing without SMS? Tap here to Try Client Demo'}
+            </Text>
+          </TouchableOpacity>
 
           {/* Form */}
           <Card variant="elevated" style={styles.card}>
@@ -291,5 +324,20 @@ const styles = StyleSheet.create({
     color: THEME.colors.emerald,
     fontSize: 14,
     fontWeight: '800',
+  },
+  demoLinkBox: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: THEME.colors.gold,
+    borderRadius: THEME.borderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  demoLinkText: {
+    color: THEME.colors.goldLight,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { OTPChallenge, OtpPurpose, AuthSecurityEvent } from '../models';
-import { devOtpProvider } from './sms/devOtpProvider';
+import { getSmsProvider } from './sms';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 
@@ -27,7 +27,7 @@ export async function createAndSendOtp(
   mobile: string,
   purpose: OtpPurpose,
   ipAddress?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; rawOtp?: string }> {
   try {
     // 1. Invalidate any existing active challenges for this mobile and purpose
     await OTPChallenge.deleteMany({ mobile, purpose });
@@ -49,8 +49,9 @@ export async function createAndSendOtp(
       expiresAt,
     });
 
-    // 5. Send via provider
-    const sendResult = await devOtpProvider.sendOtp(mobile, rawOtp, purpose);
+    // 5. Send via active provider
+    const provider = getSmsProvider();
+    const sendResult = await provider.sendOtp(mobile, rawOtp, purpose);
     if (!sendResult.success) {
       logger.error({ mobile, purpose, err: sendResult.error }, 'Failed to dispatch OTP');
       return { success: false, error: 'Failed to send verification code' };
@@ -64,7 +65,7 @@ export async function createAndSendOtp(
       metadata: { purpose },
     });
 
-    return { success: true };
+    return { success: true, rawOtp };
   } catch (err: unknown) {
     logger.error({ err, mobile, purpose }, 'Error creating OTP challenge');
     return { success: false, error: 'Could not generate verification code' };
