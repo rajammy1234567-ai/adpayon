@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose, { Types } from 'mongoose';
-import { ConcurrencyLoadTestHarness } from '../src/scripts/concurrencyLoadTestHarness';
+import { ConcurrencyLoadTestHarness } from '../src/testUtils/testHarness';
 import { TestOwnershipTracker } from '../src/testUtils/dbIsolation';
 
 describe('Phase 8D.5: Failed-Initialization Cleanup Safety Tests', () => {

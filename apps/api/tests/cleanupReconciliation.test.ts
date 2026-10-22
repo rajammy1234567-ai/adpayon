@@ -8,7 +8,7 @@ import { Task } from '../src/models/Task';
 import { Campaign } from '../src/models/Campaign';
 import { TaskAssignment } from '../src/models/TaskAssignment';
 import { User } from '../src/models/User';
-import { ConcurrencyLoadTestHarness } from '../src/scripts/concurrencyLoadTestHarness';
+import { ConcurrencyLoadTestHarness } from '../src/testUtils/testHarness';
 
 describe('Phase 9.2: Safe Cleanup Fix & Timeout Reconciliation Suite', () => {
   before(async () => {

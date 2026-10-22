@@ -26,7 +26,7 @@
     "build:shared": "npm run --workspace=@adpayon/shared build",
     "lint": "npm run --workspaces lint"
   },
-  "devDependencies": {
+  "dependencies": {
     "typescript": "~6.0.3"
   }
 }
