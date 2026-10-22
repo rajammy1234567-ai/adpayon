@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'node:crypto';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 import { User, IUser } from '../models';
 import { hashPassword, verifyPassword } from '../services/passwordService';
@@ -45,7 +46,8 @@ export function generateReferralCode(): string {
 export function sanitizeUser(user: IUser) {
   return {
     id: user._id.toString(),
-    mobile: user.mobile,
+    mobile: user.mobile || null,
+    email: user.email || null,
     name: user.name,
     role: user.role,
     status: user.status,
@@ -78,10 +80,15 @@ const verifyOtpSchema = z.object({
   purpose: z.enum(['REGISTRATION', 'LOGIN', 'PASSWORD_RESET']),
 });
 
-const loginSchema = z.object({
-  mobile: z.string().trim(),
-  password: z.string().min(1, 'Password is required'),
-});
+const loginSchema = z
+  .object({
+    mobile: z.string().trim().optional(),
+    loginId: z.string().trim().optional(),
+    password: z.string().min(1, 'Password is required'),
+  })
+  .refine((data) => data.mobile || data.loginId, {
+    message: 'Mobile number or login ID is required',
+  });
 
 const refreshSchema = z.object({
   refreshToken: z.string().trim().min(20, 'Invalid refresh token'),
@@ -350,7 +357,7 @@ export async function verifyOtp(req: Request, res: Response): Promise<void> {
       const tokens = await createAuthSession(
         existingActiveUser._id,
         existingActiveUser.role,
-        existingActiveUser.mobile,
+        existingActiveUser.mobile || normalizedMobile,
         req.headers['user-agent'],
         req.ip
       );
@@ -369,7 +376,7 @@ export async function verifyOtp(req: Request, res: Response): Promise<void> {
     const tokens = await createAuthSession(
       user._id,
       user.role,
-      user.mobile,
+      user.mobile || normalizedMobile,
       req.headers['user-agent'],
       req.ip
     );
@@ -398,7 +405,7 @@ export async function verifyOtp(req: Request, res: Response): Promise<void> {
     const tokens = await createAuthSession(
       user._id,
       user.role,
-      user.mobile,
+      user.mobile || normalizedMobile,
       req.headers['user-agent'],
       req.ip
     );
@@ -434,20 +441,46 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  let normalizedMobile: string;
-  try {
-    normalizedMobile = normalizeIndianMobile(parsed.data.mobile);
-  } catch {
-    // Uniform credential failure response against enumeration
-    res.status(401).json({
-      success: false,
-      error: { code: 'INVALID_CREDENTIALS', message: 'Invalid mobile number or password.' },
-    });
-    return;
+  const rawIdentifier = (parsed.data.loginId || parsed.data.mobile || '').trim();
+  const isEmailIdentifier = rawIdentifier.includes('@');
+
+  let user: (IUser & { passwordHash: string }) | null = null;
+
+  if (isEmailIdentifier) {
+    // Staging Reviewer Login: Allowed ONLY when APP_ENV=client_staging and database is adpayon_client_staging
+    const isStagingReviewerAllowed =
+      env.APP_ENV === 'client_staging' &&
+      mongoose.connection.db?.databaseName === 'adpayon_client_staging';
+
+    if (!isStagingReviewerAllowed || rawIdentifier.toLowerCase() !== 'client.demo@adpayon.test') {
+      res.status(401).json({
+        success: false,
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid mobile number or password.' },
+      });
+      return;
+    }
+
+    user = await User.findOne({
+      email: 'client.demo@adpayon.test',
+      'metadata.accountType': 'CLIENT_STAGING_TEST',
+    }).select('+passwordHash');
+  } else {
+    let normalizedMobile: string;
+    try {
+      normalizedMobile = normalizeIndianMobile(rawIdentifier);
+    } catch {
+      // Uniform credential failure response against enumeration
+      res.status(401).json({
+        success: false,
+        error: { code: 'INVALID_CREDENTIALS', message: 'Invalid mobile number or password.' },
+      });
+      return;
+    }
+
+    // Explicitly select hidden passwordHash
+    user = await User.findOne({ mobile: normalizedMobile }).select('+passwordHash');
   }
 
-  // Explicitly select hidden passwordHash
-  const user = await User.findOne({ mobile: normalizedMobile }).select('+passwordHash');
   if (!user) {
     res.status(401).json({
       success: false,
@@ -467,7 +500,9 @@ export async function login(req: Request, res: Response): Promise<void> {
 
   // Enforce account status
   if (user.status === 'PENDING_VERIFICATION') {
-    await createAndSendOtp(user.mobile, 'REGISTRATION', req.ip);
+    if (user.mobile) {
+      await createAndSendOtp(user.mobile, 'REGISTRATION', req.ip);
+    }
     res.status(403).json({
       success: false,
       error: {
@@ -490,10 +525,11 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const sessionIdentifier = user.mobile || user.email || 'client.demo@adpayon.test';
   const tokens = await createAuthSession(
     user._id,
     user.role,
-    user.mobile,
+    sessionIdentifier,
     req.headers['user-agent'],
     req.ip
   );

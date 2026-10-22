@@ -4,7 +4,8 @@ import { useDemoStore } from '../../store/demoStore';
 
 export interface BackendUser {
   id: string;
-  mobile: string;
+  mobile?: string;
+  email?: string;
   name: string;
   role: 'USER' | 'ADMIN' | 'SUPPORT' | 'FINANCE_AUDITOR';
   status: 'PENDING_VERIFICATION' | 'ACTIVE' | 'SUSPENDED' | 'BANNED';
@@ -14,6 +15,7 @@ export interface BackendUser {
   metadata?: {
     language?: 'hi' | 'en';
     kycStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+    accountType?: string;
   };
   createdAt: string;
 }
@@ -72,7 +74,8 @@ export interface AuthSessionResponse {
 }
 
 export interface LoginPayload {
-  mobile: string;
+  mobile?: string;
+  loginId?: string;
   password: string;
 }
 
@@ -87,7 +90,8 @@ export interface GetProfileResponse {
  * Maps backend user document representation to mobile UI UserProfile.
  */
 export function mapBackendUserToProfile(backendUser: BackendUser): UserProfile {
-  const strippedMobile = backendUser.mobile.replace(/^\+91/, '');
+  const rawMobile = backendUser.mobile || backendUser.email || 'demo-user';
+  const strippedMobile = rawMobile.replace(/^\+91/, '');
   return {
     id: backendUser.id,
     name: backendUser.name,

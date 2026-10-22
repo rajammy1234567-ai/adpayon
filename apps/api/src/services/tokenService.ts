@@ -164,7 +164,7 @@ export async function rotateAuthSession(
   const newTokens = await createAuthSession(
     user._id,
     user.role,
-    user.mobile,
+    user.mobile || user.email || '',
     userAgent,
     ipAddress,
     session.familyId

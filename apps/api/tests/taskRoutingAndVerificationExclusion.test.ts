@@ -49,7 +49,7 @@ describe('Phase 10.4C: Task Routing & Generic Verification Exclusion Regression 
       testUserToken = generateAccessToken({
         userId: user._id.toString(),
         role: user.role,
-        mobile: user.mobile,
+        mobile: user.mobile!,
       });
     }
   });

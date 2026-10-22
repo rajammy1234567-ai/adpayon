@@ -135,10 +135,10 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
   });
 
   // 6. Dispatch 2FA OTP to registered admin mobile
-  await createAndSendOtp(user.mobile, 'LOGIN');
+  await createAndSendOtp(user.mobile!, 'LOGIN');
 
   // Mask mobile for security display (e.g., +91 ••••• ••210)
-  const maskedMobile = user.mobile.replace(/(\+\d{2})(\d{5})(\d{3})(\d{2})/, '$1 ••••• ••$4');
+  const maskedMobile = (user.mobile || '').replace(/(\+\d{2})(\d{5})(\d{3})(\d{2})/, '$1 ••••• ••$4');
 
   res.status(200).json({
     success: true,
@@ -201,7 +201,7 @@ export async function verifyAdminMfa(req: Request, res: Response): Promise<void>
   }
 
   // 3. Verify OTP challenge
-  const otpResult = await verifyOtpChallenge(user.mobile, otp, 'LOGIN');
+  const otpResult = await verifyOtpChallenge(user.mobile!, otp, 'LOGIN');
   if (!otpResult.success) {
     res.status(400).json({
       success: false,
@@ -213,7 +213,7 @@ export async function verifyAdminMfa(req: Request, res: Response): Promise<void>
   // 4. Create authentic administrative session
   const ipAddress = req.ip || '127.0.0.1';
   const userAgent = req.headers['user-agent'] || 'AdpayonAdminPortal';
-  const session = await createAuthSession(user._id, user.role, user.mobile, userAgent, ipAddress);
+  const session = await createAuthSession(user._id, user.role, user.mobile!, userAgent, ipAddress);
 
   // 5. Append-only Admin Audit Logging
   await AdminAuditLog.create({

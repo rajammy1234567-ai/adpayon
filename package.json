@@ -21,6 +21,8 @@
     "verify:atlas": "npm run --workspace=@adpayon/api verify:atlas",
     "verify:sandbox": "npm run --workspace=@adpayon/api verify:sandbox",
     "bootstrap:admin:sandbox": "npm run --workspace=@adpayon/api bootstrap:admin:sandbox",
+    "bootstrap:client-staging": "npm run --workspace=@adpayon/api bootstrap:client-staging --",
+    "migrate:staging-mobile-index": "npm run --workspace=@adpayon/api migrate:staging-mobile-index --",
     "admin": "npm run --workspace=@adpayon/admin dev",
     "admin:sandbox": "npm run --workspace=@adpayon/admin dev:sandbox",
     "build:shared": "npm run --workspace=@adpayon/shared build",

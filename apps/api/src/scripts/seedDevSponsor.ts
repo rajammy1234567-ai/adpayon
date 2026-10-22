@@ -123,7 +123,7 @@ export async function seedDevSponsor(): Promise<SeedDevSponsorResult> {
     action: 'CREATED',
     user: {
       id: sponsor._id.toString(),
-      mobile: sponsor.mobile,
+      mobile: sponsor.mobile!,
       name: sponsor.name,
       referralCode: sponsor.referralCode,
       role: sponsor.role,

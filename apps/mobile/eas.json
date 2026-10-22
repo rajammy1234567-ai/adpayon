@@ -25,7 +25,7 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
         "EXPO_PUBLIC_DEMO_MODE": "false",
-        "EXPO_PUBLIC_API_URL": "https://adpayon-api.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://adpayon-client-api.onrender.com/api"
       }
     },
     "production": {

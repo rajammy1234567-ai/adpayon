@@ -5,7 +5,8 @@ export type UserStatus = 'PENDING_VERIFICATION' | 'ACTIVE' | 'SUSPENDED' | 'BANN
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
-  mobile: string;
+  mobile?: string;
+  email?: string;
   name: string;
   passwordHash: string;
   role: UserRole;
@@ -17,6 +18,7 @@ export interface IUser extends Document {
   metadata?: {
     language?: 'hi' | 'en';
     kycStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+    accountType?: string;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -26,10 +28,18 @@ const userSchema = new Schema<IUser>(
   {
     mobile: {
       type: String,
-      required: [true, 'Mobile number is required'],
+      required: false,
       unique: true,
+      sparse: true,
       trim: true,
       match: [/^\+?[1-9]\d{9,14}$/, 'Invalid mobile phone number format'],
+    },
+    email: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true,
     },
     name: {
       type: String,

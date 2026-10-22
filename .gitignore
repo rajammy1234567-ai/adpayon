@@ -35,6 +35,9 @@ build/
 .env.production
 .env.sandbox
 .env.sandbox*
+.env.client_staging*
+.env.*
+staging-credentials-handoff*
 *.pem
 
 # IDE & OS Files

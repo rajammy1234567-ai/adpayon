@@ -8,7 +8,7 @@ import { logger } from '../config/logger';
 /**
  * Masks Indian mobile numbers for downline privacy (e.g. +91 98****3210).
  */
-export function maskMobile(rawMobile: string): string {
+export function maskMobile(rawMobile?: string): string {
   if (!rawMobile) return '**********';
   const clean = rawMobile.replace(/\D/g, '');
   if (clean.length === 10) {

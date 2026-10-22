@@ -17,7 +17,10 @@
     "verify:atlas": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/verifyTestDbConnectivity.js",
     "verify:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/verifySandboxIsolation.js",
     "bootstrap:admin": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapAdmin.js",
-    "bootstrap:admin:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/bootstrapAdminSandbox.js"
+    "bootstrap:admin:sandbox": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.sandbox dist/src/scripts/bootstrapAdminSandbox.js",
+    "bootstrap:client-staging": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapClientStagingReviewers.js",
+    "bootstrap:staging-reviewers": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node dist/src/scripts/bootstrapClientStagingReviewers.js",
+    "migrate:staging-mobile-index": "node ../../node_modules/typescript/lib/tsc.js -p tsconfig.json && node --env-file=.env.client_staging dist/src/scripts/migrateStagingMobileIndex.js"
   },
   "dependencies": {
     "@adpayon/shared": "file:../../packages/shared",

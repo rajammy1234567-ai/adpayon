@@ -34,8 +34,12 @@ const targetEnvFileName =
     ? '.env.sandbox'
     : (process.env.NODE_ENV === 'test' || process.env.APP_ENV === 'test'
       ? '.env.test'
-      : '.env'));
-const backendEnvPath = path.join(backendRoot, targetEnvFileName);
+      : (process.env.NODE_ENV === 'client_staging' || process.env.APP_ENV === 'client_staging' || process.env.APP_ENV === 'staging'
+        ? '.env.client_staging'
+        : '.env')));
+const backendEnvPath = path.isAbsolute(targetEnvFileName)
+  ? targetEnvFileName
+  : path.join(backendRoot, targetEnvFileName);
 
 if (fs.existsSync(backendEnvPath)) {
   dotenv.config({ path: backendEnvPath, override: true });

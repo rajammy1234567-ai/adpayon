@@ -984,8 +984,8 @@ describe('Phase 8B.1: Transactional Reward Safety & Concurrency Suite', () => {
       referralCode: `VLD${runId}`,
       metadata: { kycStatus: 'VERIFIED' },
     });
-    tracker.trackUser(validVU._id, validVU.mobile);
-    const validVUToken = generateAccessToken({ userId: validVU._id.toString(), role: 'USER', mobile: validVU.mobile });
+    tracker.trackUser(validVU._id, validVU.mobile!);
+    const validVUToken = generateAccessToken({ userId: validVU._id.toString(), role: 'USER', mobile: validVU.mobile! });
 
     // Task with 1 second dwell requirement
     const validTask = await Task.create({
