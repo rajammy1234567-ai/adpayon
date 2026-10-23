@@ -10,7 +10,12 @@
       "bundleIdentifier": "com.adpayon.app"
     },
     "android": {
-      "package": "com.adpayon.app"
+      "package": "com.adpayon.app",
+      "versionCode": 2,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -18,7 +23,8 @@
     "scheme": "adpayon",
     "plugins": [
       "expo-secure-store",
-      "expo-video"
+      "expo-video",
+      "./plugins/withAndroidTargetSdk36"
     ],
     "extra": {
       "eas": {

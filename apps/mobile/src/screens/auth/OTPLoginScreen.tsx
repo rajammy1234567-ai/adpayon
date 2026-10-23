@@ -24,6 +24,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'OTPLogin'>;
 export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
   const { t } = useTranslation();
   const { setAuthSession } = useAuthStore();
+  const isProduction = process.env.EXPO_PUBLIC_APP_ENV === 'production';
   const [loginMode, setLoginMode] = useState<'mobile' | 'demo'>('mobile');
   const [mobile, setMobile] = useState('');
   const [demoId, setDemoId] = useState('client.demo@adpayon.test');
@@ -146,58 +147,62 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.subtitle}>{t('auth.loginSubtitle')}</Text>
           </View>
 
-          {/* Try Client Demo Banner (Client Staging Review Flow) */}
-          <View style={styles.clientDemoCard}>
-            <View style={styles.clientDemoHeaderRow}>
-              <View style={styles.clientDemoBadge}>
-                <Text style={styles.clientDemoBadgeText}>CLIENT STAGING REVIEW</Text>
+          {/* Try Client Demo Banner (Client Staging Review Flow only - strictly hidden in Production) */}
+          {!isProduction && (
+            <View style={styles.clientDemoCard}>
+              <View style={styles.clientDemoHeaderRow}>
+                <View style={styles.clientDemoBadge}>
+                  <Text style={styles.clientDemoBadgeText}>CLIENT STAGING REVIEW</Text>
+                </View>
+                <Text style={styles.clientDemoNoSms}>No SMS Required</Text>
               </View>
-              <Text style={styles.clientDemoNoSms}>No SMS Required</Text>
+              <Text style={styles.clientDemoTitle}>Explore as Client Reviewer</Text>
+              <Text style={styles.clientDemoDesc}>
+                Instant access with an in-app test verification code. Test full app features without SMS gateway setup.
+              </Text>
+              <Button
+                title={isDemoEnrolling ? 'Creating Review Session...' : '⚡ Try Client Demo'}
+                onPress={handleTryClientDemo}
+                variant="primary"
+                size="md"
+                isLoading={isDemoEnrolling}
+                style={styles.clientDemoBtn}
+              />
             </View>
-            <Text style={styles.clientDemoTitle}>Explore as Client Reviewer</Text>
-            <Text style={styles.clientDemoDesc}>
-              Instant access with an in-app test verification code. Test full app features without SMS gateway setup.
-            </Text>
-            <Button
-              title={isDemoEnrolling ? 'Creating Review Session...' : '⚡ Try Client Demo'}
-              onPress={handleTryClientDemo}
-              variant="primary"
-              size="md"
-              isLoading={isDemoEnrolling}
-              style={styles.clientDemoBtn}
-            />
-          </View>
+          )}
 
           {/* Form Card */}
           <Card variant="elevated" style={styles.card}>
-            {/* Segmented Selector: Mobile vs Staging Demo */}
-            <View style={styles.segmentContainer}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[styles.segmentBtn, loginMode === 'mobile' && styles.segmentBtnActive]}
-                onPress={() => {
-                  setLoginMode('mobile');
-                  setErrors({});
-                }}
-              >
-                <Text style={[styles.segmentText, loginMode === 'mobile' && styles.segmentTextActive]}>
-                  Mobile Number
-                </Text>
-              </TouchableOpacity>
+            {/* Segmented Selector: Mobile vs Staging Demo (Staging only) */}
+            {!isProduction && (
+              <View style={styles.segmentContainer}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[styles.segmentBtn, loginMode === 'mobile' && styles.segmentBtnActive]}
+                  onPress={() => {
+                    setLoginMode('mobile');
+                    setErrors({});
+                  }}
+                >
+                  <Text style={[styles.segmentText, loginMode === 'mobile' && styles.segmentTextActive]}>
+                    Mobile Number
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[styles.segmentBtn, loginMode === 'demo' && styles.segmentBtnActive]}
-                onPress={() => {
-                  setLoginMode('demo');
-                  setErrors({});
-                }}
-              >
-                <Text style={[styles.segmentText, loginMode === 'demo' && styles.segmentTextActive]}>
-                  Demo Login
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[styles.segmentBtn, loginMode === 'demo' && styles.segmentBtnActive]}
+                  onPress={() => {
+                    setLoginMode('demo');
+                    setErrors({});
+                  }}
+                >
+                  <Text style={[styles.segmentText, loginMode === 'demo' && styles.segmentTextActive]}>
+                    Demo Login
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {errors.general ? (
               <View style={styles.errorBanner}>

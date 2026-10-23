@@ -755,12 +755,23 @@ export const EarnHubScreen: React.FC = () => {
                     {/* Task Meta Details */}
                     <View style={styles.taskMetaRow}>
                       <Text style={styles.metaInfoText}>
-                        ⏱️ {task.dwellTimeSeconds}s dwell time
+                        {task.category === 'ARTICLE_READ'
+                          ? `📖 Read & Quiz (~${Math.max(1, Math.ceil((task.articleReadConfig?.minReadDurationSeconds || task.dwellTimeSeconds || 30) / 60))} min)`
+                          : task.category === 'VIDEO_WATCH'
+                          ? `🎬 Watch Video (~${Math.max(1, Math.ceil((task.videoWatchConfig?.requiredWatchSeconds || 30) / 60))} min)`
+                          : `⏱️ ${task.dwellTimeSeconds}s activity`}
                       </Text>
                       <Text style={styles.metaInfoText}>
                         🎯 {task.completedToday}/{task.dailyCapPerUser} daily cap
                       </Text>
                     </View>
+                    {task.expiresAt ? (
+                      <View style={{ marginBottom: 10, marginTop: -4 }}>
+                        <Text style={[styles.metaInfoText, { color: THEME.colors.gold }]}>
+                          ⏳ Expires: {new Date(task.expiresAt).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    ) : null}
 
                     {/* Action Button */}
                     <View style={styles.cardActionWrapper}>

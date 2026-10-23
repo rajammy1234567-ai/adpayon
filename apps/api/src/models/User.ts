@@ -18,7 +18,11 @@ export interface IUser extends Document {
   metadata?: {
     language?: 'hi' | 'en';
     kycStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+    kycDetails?: Record<string, any>;
+    accountDeleted?: boolean;
+    deletedAt?: Date;
     accountType?: string;
+    [key: string]: any;
   };
   createdAt: Date;
   updatedAt: Date;

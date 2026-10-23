@@ -11,6 +11,8 @@ import { adminAuthRouter } from './routes/adminAuth.routes';
 import { adminTaskRouter } from './routes/adminTask.routes';
 import { userTaskRouter } from './routes/userTask.routes';
 import { webhookTaskRouter } from './routes/webhookTask.routes';
+import { walletRouter } from './routes/wallet.routes';
+import { privacyRouter } from './routes/privacy.routes';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -89,6 +91,8 @@ export function createApp(): Application {
   app.use('/api', adminTaskRouter);
   app.use('/api', userTaskRouter);
   app.use('/api', webhookTaskRouter);
+  app.use('/api', walletRouter);
+  app.use('/', privacyRouter);
 
   // 404 Fallback
   app.use(notFoundHandler);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Alert,
   FlatList,
@@ -42,7 +42,7 @@ export const WalletScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuthStore();
-  const { summary, transactions, filter, setFilter, recordWithdrawal } = useWalletStore();
+  const { summary, transactions, filter, setFilter, recordWithdrawal, fetchSummary, fetchTransactions } = useWalletStore();
 
   const [isWithdrawModalVisible, setIsWithdrawModalVisible] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -50,6 +50,11 @@ export const WalletScreen: React.FC = () => {
   const [upiId, setUpiId] = useState(user?.kycDetails?.upiIdMasked || 'vikram@okhdfcbank');
   const [withdrawError, setWithdrawError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchSummary();
+    fetchTransactions();
+  }, [fetchSummary, fetchTransactions]);
 
   const filteredTransactions = transactions.filter((tx) => {
     if (filter === 'ALL') return true;
@@ -81,11 +86,10 @@ export const WalletScreen: React.FC = () => {
     setIsWithdrawModalVisible(true);
   };
 
-
-  const handleConfirmWithdrawal = () => {
+  const handleConfirmWithdrawal = async () => {
     const inr = parseFloat(withdrawAmount);
-    if (isNaN(inr) || inr < 100) {
-      setWithdrawError('Minimum withdrawal amount is ₹100.00 (10,000 paise)');
+    if (isNaN(inr) || inr < 50) {
+      setWithdrawError('Minimum withdrawal amount is ₹50.00 (5,000 paise)');
       return;
     }
     const paise = inrToPaise(inr);
@@ -95,16 +99,16 @@ export const WalletScreen: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      recordWithdrawal(paise, payoutMethod);
-      setIsSubmitting(false);
+    const success = await recordWithdrawal(paise, payoutMethod, upiId);
+    setIsSubmitting(false);
+    if (success) {
       setIsWithdrawModalVisible(false);
       setWithdrawAmount('');
       Alert.alert(
         'Withdrawal Submitted',
         `₹${inr.toFixed(2)} payout requested via ${payoutMethod}. Held in escrow until admin approval.`
       );
-    }, 700);
+    }
   };
 
   const renderTransactionItem = ({ item }: { item: LedgerTransactionItem }) => {

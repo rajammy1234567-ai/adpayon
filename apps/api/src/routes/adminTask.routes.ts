@@ -9,6 +9,7 @@ import {
   updateTask,
   publishTask,
   pauseTask,
+  expireTask,
   reviewCompletion,
   getAdminMetrics,
   getCampaignDetails,
@@ -44,6 +45,7 @@ adminTaskRouter.get('/admin/tasks/:id', getTaskDetails);
 adminTaskRouter.patch('/admin/tasks/:id', updateTask);
 adminTaskRouter.post('/admin/tasks/:id/publish', publishTask);
 adminTaskRouter.post('/admin/tasks/:id/pause', pauseTask);
+adminTaskRouter.post('/admin/tasks/:id/expire', expireTask);
 
 // Platform Audit Logs
 adminTaskRouter.get('/admin/audit-logs', listAuditLogs);

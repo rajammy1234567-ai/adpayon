@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account & Data Deletion Request — AdPayOn</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #ef4444;
+      --accent: #3b82f6;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 40px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+    h1 {
+      color: #fff;
+      font-size: 2rem;
+      margin-top: 0;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 16px;
+    }
+    p, li {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+    strong {
+      color: #fff;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    .alert-box {
+      background: rgba(239, 68, 68, 0.1);
+      border-left: 4px solid var(--primary);
+      padding: 16px;
+      margin: 20px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    input[type="text"], input[type="tel"], textarea {
+      width: 100%;
+      padding: 12px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 14px 28px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #dc2626;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">Google Play Requirement — Public Deletion URL</div>
+    <h1>Request Account & Data Deletion</h1>
+
+    <div class="alert-box">
+      <strong>Important Warning:</strong> Requesting account deletion will immediately terminate your AdPayOn session, forfeit any unredeemed points or pending task submissions, and purge your personal profile data.
+    </div>
+
+    <p>In accordance with Google Play's User Data policy and applicable data privacy regulations, AdPayOn allows all users to request complete deletion of their account and associated data without requiring the app to be installed.</p>
+
+    <h3>Types of Data Deleted:</h3>
+    <ul>
+      <li>User Account Profile (Registered phone number, name, authentication credentials)</li>
+      <li>Active and historical session tokens (immediate revocation)</li>
+      <li>Task interaction history, quiz attempts, and user feedback text</li>
+      <li>Unprocessed KYC document files and personal banking credentials</li>
+    </ul>
+
+    <h3>Data Retained for Legal Compliance:</h3>
+    <ul>
+      <li>Financial ledger transaction history for completed monetary withdrawals is retained for up to 5 years strictly to fulfill mandatory Prevention of Money Laundering Act (PMLA 2002) and tax compliance regulations. Retained records are kept in encrypted, access-restricted cold storage and never used for marketing.</li>
+    </ul>
+
+    <h2>Submit Web Deletion Request</h2>
+    <form action="/api/users/delete-account-public" method="POST">
+      <div class="form-group">
+        <label for="mobile">Registered Mobile Number (+91 format):</label>
+        <input type="tel" id="mobile" name="mobile" placeholder="+91XXXXXXXXXX" required>
+      </div>
+      <div class="form-group">
+        <label for="reason">Reason for Account Deletion (Optional):</label>
+        <textarea id="reason" name="reason" rows="3" placeholder="Let us know why you are leaving..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" required> I understand that this action is permanent and cannot be undone.
+        </label>
+      </div>
+      <button type="submit">Permanently Delete My Account & Data</button>
+    </form>
+
+    <p style="margin-top: 30px; text-align: center; font-size: 0.9rem;">
+      Need assistance? Contact our Data Privacy Officer at <a href="mailto:privacy@adpayon.com">privacy@adpayon.com</a>.<br>
+      Read our full <a href="/privacy">Privacy Policy</a>.
+    </p>
+  </div>
+</body>
+</html>

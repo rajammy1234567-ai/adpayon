@@ -42,6 +42,31 @@ export const ProfileSettingsScreen: React.FC = () => {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account & Data',
+      'Are you sure you want to delete your account? All personal data, active sessions, and profile details will be permanently anonymized and scheduled for deletion in compliance with Google Play and Indian DPDP Act requirements. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { deleteAccountApi } = await import('../../services/api/wallet.api');
+              await deleteAccountApi();
+              Alert.alert('Account Deleted', 'Your account has been scheduled for deletion.');
+              useDemoStore.getState().exitDemoMode();
+              await logout();
+            } catch {
+              useDemoStore.getState().exitDemoMode();
+              await logout();
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -198,6 +223,15 @@ export const ProfileSettingsScreen: React.FC = () => {
           variant="danger"
           size="md"
           style={styles.logoutBtn}
+        />
+
+        {/* Google Play Mandated Account Deletion */}
+        <Button
+          title="Delete Account & Personal Data"
+          onPress={handleDeleteAccount}
+          variant="outline"
+          size="sm"
+          style={{ marginTop: 12, borderColor: THEME.colors.textMuted }}
         />
 
         <Text style={styles.versionFooter}>

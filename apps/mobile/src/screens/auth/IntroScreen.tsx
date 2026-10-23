@@ -57,6 +57,8 @@ export const IntroScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const isProduction = process.env.EXPO_PUBLIC_APP_ENV === 'production';
+
   const handleEnterDemo = () => {
     useDemoStore.getState().enterDemoMode();
     useAuthStore.getState().login(DEMO_USER, 'demo_access_token');
@@ -123,14 +125,16 @@ export const IntroScreen: React.FC<Props> = ({ navigation }) => {
           variant="secondary"
           size="md"
         />
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={handleEnterDemo}
-          style={styles.demoBtn}
-        >
-          <Text style={styles.demoBtnText}>🚀 Explore Client Demo Mode (Sample Data)</Text>
-          <Text style={styles.demoBtnSub}>Offline preview • No login required</Text>
-        </TouchableOpacity>
+        {!isProduction && (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleEnterDemo}
+            style={styles.demoBtn}
+          >
+            <Text style={styles.demoBtnText}>🚀 Explore Client Demo Mode (Sample Data)</Text>
+            <Text style={styles.demoBtnSub}>Offline preview • No login required</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

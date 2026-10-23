@@ -10,7 +10,23 @@ export default defineConfig(({ mode }) => {
     process.env.APP_ENV === 'sandbox';
 
   const port = isSandbox ? 5174 : 5173;
-  const targetApi = isSandbox ? 'http://127.0.0.1:5001' : 'http://127.0.0.1:5000';
+
+  // Configurable proxy target with fallback to local defaults
+  const rawTarget =
+    env.VITE_API_TARGET_URL ||
+    env.VITE_PROXY_TARGET ||
+    process.env.VITE_API_TARGET_URL ||
+    process.env.VITE_PROXY_TARGET ||
+    (isSandbox ? 'http://127.0.0.1:5001' : 'http://127.0.0.1:5000');
+
+  // Strip trailing '/api' and '/' to ensure Vite proxy does not duplicate '/api'
+  let targetApi = rawTarget.trim();
+  if (targetApi.endsWith('/api')) {
+    targetApi = targetApi.slice(0, -4);
+  }
+  if (targetApi.endsWith('/')) {
+    targetApi = targetApi.slice(0, -1);
+  }
 
   return {
     plugins: [react()],
@@ -27,7 +43,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      'import.meta.env.VITE_APP_ENV': JSON.stringify(isSandbox ? 'sandbox' : 'development'),
+      'import.meta.env.VITE_APP_ENV': JSON.stringify(isSandbox ? 'sandbox' : (env.VITE_APP_ENV || 'development')),
       'import.meta.env.VITE_API_PORT': JSON.stringify(isSandbox ? '5001' : '5000'),
     },
   };

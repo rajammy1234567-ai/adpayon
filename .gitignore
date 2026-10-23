@@ -11,6 +11,8 @@ pnpm-debug.log*
 # Expo & React Native Caches
 .expo/
 apps/*/.expo/
+apps/*/android/
+apps/*/ios/
 .expo-shared/
 *.jks
 *.p8

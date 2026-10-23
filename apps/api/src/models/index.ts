@@ -11,3 +11,5 @@ export * from './TaskEvent';
 export * from './VerificationEvidence';
 export * from './VideoPlaybackSession';
 export * from './ArticleReadingSession';
+export * from './WalletLedgerEntry';
+export * from './WithdrawalRequest';

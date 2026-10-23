@@ -24,9 +24,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerify'>;
 export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { mobile, mode, testOtp } = route.params;
+  const isProduction = process.env.EXPO_PUBLIC_APP_ENV === 'production';
   const { setAuthSession } = useAuthStore();
   const [otp, setOtp] = useState('');
-  const [currentTestOtp, setCurrentTestOtp] = useState<string | undefined>(testOtp);
+  const [currentTestOtp, setCurrentTestOtp] = useState<string | undefined>(
+    isProduction ? undefined : testOtp
+  );
   const [timer, setTimer] = useState(45);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -118,7 +121,7 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
             {t('auth.otpSentTo')} +91 {mobile}
           </Text>
 
-          {currentTestOtp ? (
+          {!isProduction && currentTestOtp ? (
             <View style={styles.stagingBanner}>
               <View style={styles.stagingBadge}>
                 <Text style={styles.stagingBadgeText}>TEST OTP — Client Staging Only</Text>
