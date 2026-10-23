@@ -11,6 +11,7 @@ import {
   Search,
   AlertCircle,
   Sparkles,
+  Ban,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Task, TaskStatus, Pagination } from '../types';
@@ -30,9 +31,10 @@ export const Tasks: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Publish / Pause confirmation modal states
+  // Publish / Pause / Expire confirmation modal states
   const [taskToPublish, setTaskToPublish] = useState<Task | null>(null);
   const [taskToPause, setTaskToPause] = useState<Task | null>(null);
+  const [taskToExpire, setTaskToExpire] = useState<Task | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   const fetchTasks = async (page = 1) => {
@@ -93,6 +95,22 @@ export const Tasks: React.FC = () => {
     }
   };
 
+  const handleExpireConfirm = async () => {
+    if (!taskToExpire) return;
+    setIsProcessingAction(true);
+    setActionError(null);
+    try {
+      await api.expireTask(taskToExpire.id);
+      setTaskToExpire(null);
+      await fetchTasks(pagination.page);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to expire task');
+      setTaskToExpire(null);
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
   const filteredTasks = tasks.filter(
     (t) =>
       t.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -129,6 +147,11 @@ export const Tasks: React.FC = () => {
           <span className="text-[10px] font-mono text-cyan-400 bg-obsidian-800 px-1.5 py-0.5 rounded border border-obsidian-700">
             {row.verificationMethod}
           </span>
+          {row.expiresAt && (
+            <span className="text-[10px] text-amber-400/90 flex items-center gap-1 font-mono">
+              Exp: {new Date(row.expiresAt).toLocaleDateString()}
+            </span>
+          )}
         </div>
       ),
     },
@@ -203,13 +226,23 @@ export const Tasks: React.FC = () => {
             >
               <Pause className="w-4 h-4" />
             </button>
-          ) : (
+          ) : row.status !== 'ARCHIVED' ? (
             <button
               onClick={() => setTaskToPublish(row)}
               title="Publish Task"
               className="p-1.5 text-emerald-400 hover:bg-obsidian-800 rounded-lg transition"
             >
               <Play className="w-4 h-4" />
+            </button>
+          ) : null}
+
+          {(row.status === 'PUBLISHED' || row.status === 'PAUSED') && (
+            <button
+              onClick={() => setTaskToExpire(row)}
+              title="Expire & Archive Task"
+              className="p-1.5 text-rose-400 hover:bg-obsidian-800 rounded-lg transition"
+            >
+              <Ban className="w-4 h-4" />
             </button>
           )}
 
@@ -328,6 +361,20 @@ export const Tasks: React.FC = () => {
           message={`Are you sure you want to pause '${taskToPause.title}'? This will immediately hide the task from all user feeds and reject new start attempts.`}
           confirmLabel="Pause Task Now"
           variant="warning"
+          isLoading={isProcessingAction}
+        />
+      )}
+
+      {/* Expire Confirmation Modal */}
+      {taskToExpire && (
+        <ConfirmModal
+          isOpen={true}
+          onClose={() => setTaskToExpire(null)}
+          onConfirm={handleExpireConfirm}
+          title="Expire Task: Archive & Close to Earners"
+          message={`Are you sure you want to expire '${taskToExpire.title}'? This will archive the task, permanently remove it from all earner feeds, and reject any further task completions or reward payouts.`}
+          confirmLabel="Expire Task"
+          variant="danger"
           isLoading={isProcessingAction}
         />
       )}

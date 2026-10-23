@@ -58,6 +58,16 @@ export const DEMO_TASKS: TaskFeedItem[] = [
       allowSeeking: false,
       sessionTimeoutSeconds: 300,
       completionPolicy: 'MINIMUM_DURATION',
+      comprehensionQuiz: {
+        question: 'What is demonstrated in this educational video clip?',
+        options: [
+          'An open-source animated demonstration',
+          'A banking transfer confirmation',
+          'A cryptocurrency token sale',
+          'A cellular network diagnostic',
+        ],
+        correctOptionIndex: 0,
+      },
     },
   },
   {
@@ -96,10 +106,10 @@ Security is maintained through Transport Layer Security (TLS), which encrypts th
   {
     id: 'demo_app_task_001',
     campaignName: 'Android QA Discovery Labs [DEMO]',
-    title: 'Android QA: Discover Public Utility App',
-    description: 'Review the app description and launch the official Google Play Store listing to test the safe store redirection flow.',
+    title: 'Android QA: Test DiskUsage Utility App',
+    description: 'Explore the utility app listing on Google Play and submit voluntary usability feedback within ADPAYON.',
     category: 'APP_INSTALL',
-    verificationMethod: 'AUTHENTICATED_WEBHOOK',
+    verificationMethod: 'FIRST_PARTY_ACTION',
     rewardPoints: 25,
     dailyCapPerUser: 1,
     completedToday: 0,
@@ -111,8 +121,10 @@ Security is maintained through Transport Layer Security (TLS), which encrypts th
       packageName: 'com.google.android.diskusage',
       platform: 'ANDROID',
       storeUrl: 'https://play.google.com/store/apps/details?id=com.google.android.diskusage',
-      attributionMethod: 'SIGNED_POSTBACK',
-      conversionEvent: 'FIRST_OPEN',
+      attributionMethod: 'IN_APP_FEEDBACK',
+      conversionEvent: 'INSTALL',
+      testingSteps: '1. Tap Open Google Play to view app listing.\n2. Review visual storage diagram features.\n3. Return to ADPAYON to rate and submit feedback.',
+      feedbackQuestion: 'How easy was it to understand the storage breakdown features?',
     },
   },
 ];

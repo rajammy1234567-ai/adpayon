@@ -5,6 +5,7 @@ import {
   AppState,
   AppStateStatus,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -18,6 +19,7 @@ import { RootStackParamList } from '../../navigation/types';
 import {
   startVideoSessionApi,
   recordVideoProgressApi,
+  submitVideoQuizAnswerApi,
   verifyVideoWatchApi,
   startTaskApi,
 } from '../../services/api/task.api';
@@ -49,6 +51,13 @@ export const VideoWatchTaskScreen: React.FC = () => {
     points: number;
     completionId: string;
   } | null>(null);
+
+  // Quiz verification state
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
+  const [quizSuccess, setQuizSuccess] = useState(false);
+  const [quizMessage, setQuizMessage] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // AppState & Playback tracking
   const [appStateStatus, setAppStateStatus] = useState<AppStateStatus>(AppState.currentState);
@@ -94,6 +103,10 @@ export const VideoWatchTaskScreen: React.FC = () => {
         setRemainingSeconds(res.data.remainingWatchSeconds);
         setPlaybackEnded(Boolean(res.data.playbackEnded));
         playbackEndedRef.current = Boolean(res.data.playbackEnded);
+        if (res.data.quizAnswerCorrect) {
+          setQuizSuccess(true);
+          setQuizMessage('Verification question answered correctly.');
+        }
 
         const isFullPolicy = res.data.completionPolicy === 'FULL_VIDEO';
         const qualified = isFullPolicy
@@ -160,6 +173,7 @@ export const VideoWatchTaskScreen: React.FC = () => {
 
     const playingSub = player.addListener('playingChange', (event) => {
       isPlayingRef.current = event.isPlaying;
+      setIsPlaying(event.isPlaying);
     });
 
     const statusSub = player.addListener('statusChange', (event) => {
@@ -246,7 +260,29 @@ export const VideoWatchTaskScreen: React.FC = () => {
     return () => subscription.remove();
   }, [appStateStatus, taskId, player]);
 
-  // 5. Verification & Reward Trigger
+  // 5. Verification Question / Quiz Submission
+  const handleQuizSubmit = async () => {
+    if (selectedOption === null || isSubmittingQuiz || !session) return;
+    setIsSubmittingQuiz(true);
+    setQuizMessage(null);
+
+    try {
+      const res = await submitVideoQuizAnswerApi(taskId, session.sessionId, selectedOption);
+      if (res.success && res.data?.isCorrect) {
+        setQuizSuccess(true);
+        setQuizMessage('✅ Correct answer! Verification step passed.');
+      } else {
+        setQuizSuccess(false);
+        setQuizMessage(res.data?.message || '❌ Incorrect answer. Please try again.');
+      }
+    } catch (err: any) {
+      setQuizMessage(err.message || 'Failed to submit quiz answer.');
+    } finally {
+      setIsSubmittingQuiz(false);
+    }
+  };
+
+  // 6. Verification & Reward Trigger
   const handleVerify = async () => {
     if (!session || isVerifying || isCompleted) return;
     setIsVerifying(true);
@@ -267,13 +303,13 @@ export const VideoWatchTaskScreen: React.FC = () => {
       } else {
         Alert.alert(
           'Verification Incomplete',
-          'Could not verify complete playback. Please ensure the full video has played to the end.'
+          'Could not verify complete playback or quiz verification. Please ensure requirements are met.'
         );
       }
     } catch (err: any) {
       Alert.alert(
         'Verification Error',
-        err.message || 'Unable to complete reward verification. Please complete the full video watch.'
+        err.message || 'Unable to complete reward verification. Please complete the video watch and quiz.'
       );
     } finally {
       setIsVerifying(false);
@@ -291,6 +327,9 @@ export const VideoWatchTaskScreen: React.FC = () => {
     : accumulatedSeconds;
   const progressPercent = Math.min(100, Math.round((currentCoverage / totalTarget) * 100));
 
+  const hasQuiz = Boolean(session?.hasQuiz && session?.comprehensionQuiz);
+  const canClaim = isQualified && (!hasQuiz || quizSuccess);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Top Header */}
@@ -302,11 +341,11 @@ export const VideoWatchTaskScreen: React.FC = () => {
         >
           <Text style={styles.backButtonText}>← Exit</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Promotional Video Task</Text>
+        <Text style={styles.headerTitle}>Educational Video Task</Text>
         <View style={styles.headerRight}>
           <Badge
-            label={isQualified ? 'QUALIFIED' : `${remainingSeconds}s LEFT`}
-            variant={isQualified ? 'verified' : 'gold'}
+            label={canClaim ? 'READY TO CLAIM' : isQualified ? 'VERIFY QUIZ' : `${remainingSeconds}s LEFT`}
+            variant={canClaim ? 'verified' : isQualified ? 'gold' : 'neutral'}
           />
         </View>
       </View>
@@ -329,7 +368,7 @@ export const VideoWatchTaskScreen: React.FC = () => {
           />
         </View>
       ) : (
-        <View style={styles.content}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
           {/* Video Player Surface */}
           <View style={styles.playerWrapper}>
             <VideoView
@@ -344,31 +383,31 @@ export const VideoWatchTaskScreen: React.FC = () => {
             {!session?.allowSeeking && (
               <View style={styles.seekingPolicyBanner}>
                 <Text style={styles.seekingPolicyText}>
-                  ⚠️ Continuous linear playback required. Forward skipping is disabled.
+                  ⚠️ Continuous playback required. Forward skipping disabled.
                 </Text>
               </View>
             )}
           </View>
 
-          {/* Controls Bar (if native controls are disabled for anti-seeking) */}
-          {!session?.allowSeeking && (
-            <View style={styles.customControls}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (player.playing) {
-                    player.pause();
-                  } else {
-                    player.play();
-                  }
-                }}
-                style={styles.playPauseButton}
-              >
-                <Text style={styles.playPauseText}>
-                  {player.playing ? '⏸ Pause' : '▶ Play Video'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Controls Bar: Clear Play/Pause Button */}
+          <View style={styles.customControls}>
+            <TouchableOpacity
+              onPress={() => {
+                if (player.playing) {
+                  player.pause();
+                  setIsPlaying(false);
+                } else {
+                  player.play();
+                  setIsPlaying(true);
+                }
+              }}
+              style={styles.playPauseButton}
+            >
+              <Text style={styles.playPauseText}>
+                {isPlaying ? '⏸ Pause Video' : '▶ Play Video'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Progress Card */}
           <View style={styles.progressCard}>
@@ -447,6 +486,78 @@ export const VideoWatchTaskScreen: React.FC = () => {
             )}
           </View>
 
+          {/* Simple Verification Question Card (if configured) */}
+          {hasQuiz && session?.comprehensionQuiz && (
+            <View style={styles.quizCard}>
+              <View style={styles.quizHeaderRow}>
+                <Text style={styles.quizSectionTitle}>Verification Question</Text>
+                {quizSuccess && (
+                  <Badge label="PASSED" variant="verified" />
+                )}
+              </View>
+              <Text style={styles.quizQuestionText}>
+                {session.comprehensionQuiz.question}
+              </Text>
+
+              <View style={styles.quizOptionsList}>
+                {session.comprehensionQuiz.options.map((opt, idx) => {
+                  const isSelected = selectedOption === idx;
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => {
+                        if (!quizSuccess) {
+                          setSelectedOption(idx);
+                          setQuizMessage(null);
+                        }
+                      }}
+                      disabled={quizSuccess || isSubmittingQuiz}
+                      style={[
+                        styles.quizOptionButton,
+                        isSelected && styles.quizOptionButtonSelected,
+                        quizSuccess && isSelected && styles.quizOptionButtonCorrect,
+                      ]}
+                    >
+                      <View style={[styles.quizRadioCircle, isSelected && styles.quizRadioCircleSelected]}>
+                        {isSelected && <View style={styles.quizRadioDot} />}
+                      </View>
+                      <Text
+                        style={[
+                          styles.quizOptionText,
+                          isSelected && styles.quizOptionTextSelected,
+                        ]}
+                      >
+                        {opt}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {quizMessage && (
+                <Text
+                  style={[
+                    styles.quizMessageText,
+                    quizSuccess ? styles.quizSuccessText : styles.quizErrorText,
+                  ]}
+                >
+                  {quizMessage}
+                </Text>
+              )}
+
+              {!quizSuccess && (
+                <Button
+                  title={isSubmittingQuiz ? 'Verifying Answer...' : 'Submit Answer'}
+                  onPress={handleQuizSubmit}
+                  variant="primary"
+                  disabled={selectedOption === null || isSubmittingQuiz}
+                  isLoading={isSubmittingQuiz}
+                  style={styles.quizSubmitButton}
+                />
+              )}
+            </View>
+          )}
+
           {/* Action / Claim Button */}
           <View style={styles.actionContainer}>
             <Button
@@ -455,20 +566,22 @@ export const VideoWatchTaskScreen: React.FC = () => {
                   ? 'Reward Claimed'
                   : isVerifying
                   ? 'Verifying Coverage...'
-                  : isQualified
-                  ? 'Claim Reward Points'
-                  : isFullVideoPolicy
-                  ? `Watch Complete Video to Unlock (${remainingSeconds}s left)`
-                  : `Watch ${remainingSeconds}s More to Unlock`
+                  : !isQualified
+                  ? isFullVideoPolicy
+                    ? `Watch Complete Video to Unlock (${remainingSeconds}s left)`
+                    : `Watch ${remainingSeconds}s More to Unlock`
+                  : hasQuiz && !quizSuccess
+                  ? 'Answer Verification Question Above'
+                  : 'Claim Reward Points'
               }
               onPress={handleVerify}
-              variant={isQualified ? 'primary' : 'secondary'}
-              disabled={!isQualified || isVerifying || isCompleted}
+              variant={canClaim ? 'primary' : 'secondary'}
+              disabled={!canClaim || isVerifying || isCompleted}
               isLoading={isVerifying}
               style={styles.claimButton}
             />
           </View>
-        </View>
+        </ScrollView>
       )}
 
       {/* Completion Confirmation Modal */}
@@ -752,5 +865,96 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     width: '100%',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  quizCard: {
+    backgroundColor: THEME.colors.surface,
+    borderRadius: THEME.borderRadius.md,
+    padding: THEME.spacing.lg,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderSubtle,
+    marginVertical: THEME.spacing.md,
+  },
+  quizHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: THEME.spacing.sm,
+  },
+  quizSectionTitle: {
+    color: THEME.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  quizQuestionText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: THEME.spacing.md,
+  },
+  quizOptionsList: {
+    gap: THEME.spacing.sm,
+  },
+  quizOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surfaceSubtle,
+    borderRadius: THEME.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderSubtle,
+  },
+  quizOptionButtonSelected: {
+    borderColor: THEME.colors.emerald,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  },
+  quizOptionButtonCorrect: {
+    borderColor: THEME.colors.emerald,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+  },
+  quizRadioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: THEME.colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: THEME.spacing.sm,
+  },
+  quizRadioCircleSelected: {
+    borderColor: THEME.colors.emerald,
+  },
+  quizRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: THEME.colors.emerald,
+  },
+  quizOptionText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 14,
+    flex: 1,
+  },
+  quizOptionTextSelected: {
+    color: THEME.colors.textPrimary,
+    fontWeight: '600',
+  },
+  quizMessageText: {
+    fontSize: 13,
+    marginTop: THEME.spacing.sm,
+    textAlign: 'center',
+  },
+  quizSuccessText: {
+    color: THEME.colors.emerald,
+    fontWeight: '600',
+  },
+  quizErrorText: {
+    color: THEME.colors.danger,
+  },
+  quizSubmitButton: {
+    marginTop: THEME.spacing.md,
   },
 });

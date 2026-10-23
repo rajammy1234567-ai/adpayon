@@ -239,6 +239,11 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
       continue;
     }
 
+    // Hide if task has expired
+    if (t.expiresAt && new Date(t.expiresAt) <= new Date()) {
+      continue;
+    }
+
     // Server-side targeting evaluation
     let eligible = true;
     let ineligibilityReason: string | undefined;
@@ -277,6 +282,7 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
       completedToday,
       dwellTimeSeconds: t.dwellTimeSeconds,
       instructions: t.instructions,
+      expiresAt: t.expiresAt,
       isEligible: eligible,
       ineligibilityReason,
       hasActiveAssignment: !!activeAssignment,
@@ -390,6 +396,15 @@ export async function startTask(req: AuthenticatedRequest, res: Response): Promi
     res.status(400).json({
       success: false,
       error: { code: 'CAP_EXHAUSTED', message: 'This task has reached its global completion cap' },
+    });
+    return;
+  }
+
+  // 2b. Task Expiration check
+  if (task.expiresAt && new Date(task.expiresAt) <= new Date()) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'TASK_EXPIRED', message: 'This task has expired and is no longer available' },
     });
     return;
   }
@@ -1461,5 +1476,234 @@ export async function recordStoreVisit(req: AuthenticatedRequest, res: Response)
       storeVisitedAt: visitedAt,
     },
   });
+}
+
+/**
+ * POST /api/tasks/:id/app-feedback/submit
+ * Submits genuine user testing feedback for an App Testing & Feedback task.
+ * Awards promotional points server-side exactly once.
+ * Never requests invasive device permissions, screenshot harvesting, or package manager scans.
+ */
+export async function submitAppFeedback(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const user = req.user!;
+  const { feedback, rating, answer } = req.body;
+
+  if (!Types.ObjectId.isValid(id)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'Invalid task ID format' },
+    });
+    return;
+  }
+
+  if (!feedback || typeof feedback !== 'string' || feedback.trim().length < 3) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_FEEDBACK',
+        message: 'Please provide helpful feedback about your app testing experience (at least 3 characters).',
+      },
+    });
+    return;
+  }
+
+  const task = await Task.findById(id);
+  if (!task || task.status !== 'PUBLISHED') {
+    res.status(404).json({
+      success: false,
+      error: { code: 'TASK_NOT_FOUND', message: 'Task is not currently available or paused' },
+    });
+    return;
+  }
+
+  if (task.category !== 'APP_INSTALL') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_TASK_CATEGORY',
+        message: 'This endpoint is for app feedback tasks',
+      },
+    });
+    return;
+  }
+
+  if (task.completionsCount >= task.totalCap) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'CAP_EXHAUSTED', message: 'This task has reached its global completion cap' },
+    });
+    return;
+  }
+
+  if (task.expiresAt && task.expiresAt <= new Date()) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'TASK_EXPIRED', message: 'This task has expired' },
+    });
+    return;
+  }
+
+  const mutexKey = `${task._id.toString()}:${user._id.toString()}`;
+  try {
+    await taskVerificationMutex.run(task._id.toString(), async () => {
+      // Re-check duplicate inside mutex
+      const existingCompletion = await TaskCompletion.findOne({
+        taskId: task._id,
+        userId: user._id,
+      });
+
+      if (existingCompletion) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'TASK_ALREADY_COMPLETED', message: 'You have already completed this app testing task' },
+        });
+        return;
+      }
+
+      // Find or create assignment
+      let assignment = await TaskAssignment.findOne({
+        taskId: task._id,
+        userId: user._id,
+        status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
+        expiresAt: { $gt: new Date() },
+      });
+
+      if (!assignment) {
+        assignment = await TaskAssignment.create({
+          taskId: task._id,
+          campaignId: task.campaignId,
+          userId: user._id,
+          clickId: `clk_${crypto.randomBytes(16).toString('hex')}`,
+          status: 'IN_PROGRESS',
+          assignedAt: new Date(),
+          expiresAt: new Date(Date.now() + 7200 * 1000),
+          dwellTimeAccumulatedSeconds: 0,
+          hasOpenedStore: true,
+          storeVisitedAt: new Date(),
+        });
+      }
+
+      const dbSession = await mongoose.startSession();
+      try {
+        let completionResult: any = null;
+        await dbSession.withTransaction(async () => {
+          // 1. Mark assignment completed
+          const updatedAssignment = await TaskAssignment.findOneAndUpdate(
+            { _id: assignment._id, status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } },
+            { $set: { status: 'COMPLETED', completedAt: new Date(), hasOpenedStore: true } },
+            { session: dbSession, returnDocument: 'after' }
+          );
+
+          if (!updatedAssignment) {
+            throw new TaskVerificationError(400, 'ASSIGNMENT_STATE_INVALID', 'Assignment already completed or invalid');
+          }
+
+          // 2. Reserve cap atomically
+          const updatedTask = await Task.findOneAndUpdate(
+            { _id: task._id, status: 'PUBLISHED', $expr: { $lt: ['$completionsCount', '$totalCap'] } },
+            { $inc: { completionsCount: 1 } },
+            { session: dbSession, returnDocument: 'after' }
+          );
+
+          if (!updatedTask) {
+            throw new TaskVerificationError(400, 'CAP_EXHAUSTED', 'Global completion cap exhausted');
+          }
+
+          // 3. Create verification evidence
+          const evidenceDocs = await VerificationEvidence.create(
+            [
+              {
+                assignmentId: updatedAssignment._id,
+                taskId: task._id,
+                userId: user._id,
+                evidenceType: 'FIRST_PARTY_TELEMETRY',
+                signatureVerified: true,
+                rawPayload: {
+                  feedback: feedback.trim(),
+                  rating: typeof rating === 'number' ? rating : 5,
+                  answer: typeof answer === 'string' ? answer.trim() : undefined,
+                  submittedAt: new Date().toISOString(),
+                },
+                evaluatedAt: new Date(),
+              },
+            ],
+            { session: dbSession }
+          );
+
+          // 4. Create task completion
+          const completionDocs = await TaskCompletion.create(
+            [
+              {
+                taskId: task._id,
+                campaignId: task.campaignId,
+                userId: user._id,
+                assignmentId: updatedAssignment._id,
+                clickId: updatedAssignment.clickId,
+                rewardPoints: task.rewardPoints,
+                verificationMethod: 'FIRST_PARTY_ACTION',
+                status: 'VERIFIED',
+                completedAt: new Date(),
+                evidenceId: evidenceDocs[0]._id,
+              },
+            ],
+            { session: dbSession }
+          );
+
+          // 5. Create immutable task event
+          await TaskEvent.create(
+            [
+              {
+                assignmentId: updatedAssignment._id,
+                taskId: task._id,
+                userId: user._id,
+                eventType: 'VERIFY_SUCCESS',
+                payload: {
+                  action: 'APP_FEEDBACK_SUBMITTED',
+                  rewardPoints: task.rewardPoints,
+                  completionId: completionDocs[0]._id.toString(),
+                },
+                ipAddress: req.ip || '127.0.0.1',
+              },
+            ],
+            { session: dbSession }
+          );
+
+          completionResult = completionDocs[0];
+        });
+
+        res.status(200).json({
+          success: true,
+          data: {
+            status: 'VERIFIED',
+            rewardPoints: task.rewardPoints,
+            completionId: completionResult._id.toString(),
+            message: `Thank you for your feedback! +${task.rewardPoints} promotional points credited to your balance.`,
+          },
+        });
+      } finally {
+        await dbSession.endSession();
+      }
+    });
+  } catch (err: any) {
+    if (err instanceof TaskVerificationError) {
+      res.status(err.statusCode).json({
+        success: false,
+        error: { code: err.code, message: err.message },
+      });
+      return;
+    }
+    if (err instanceof QueueOverloadError) {
+      res.status(429).json({
+        success: false,
+        error: { code: 'QUEUE_OVERLOAD', message: 'Too many concurrent requests. Please try again shortly.' },
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message || 'Feedback submission failed' },
+    });
+  }
 }
 

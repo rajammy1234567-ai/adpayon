@@ -50,6 +50,7 @@ export interface TaskFeedItem {
   appInstallConfig?: AppInstallConfig;
   videoWatchConfig?: VideoWatchConfig;
   articleReadConfig?: ArticleReadConfigClient;
+  expiresAt?: string;
   activeAssignment?: {
     id: string;
     clickId: string;
@@ -439,6 +440,9 @@ export async function startVideoSessionApi(
         status: 'ACTIVE',
         expiresAt: new Date(Date.now() + 3600000).toISOString(),
         isQualified: false,
+        hasQuiz: Boolean(cfg.comprehensionQuiz),
+        comprehensionQuiz: cfg.comprehensionQuiz,
+        quizAnswerCorrect: false,
       },
     };
   }
@@ -831,6 +835,97 @@ export async function verifyArticleReadApi(
   }>(`/tasks/${taskId}/article-session/verify`, {
     method: 'POST',
     body: JSON.stringify({ sessionId }),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/video-session/quiz
+ * Submits the user's answer to the video learning comprehension question.
+ */
+export async function submitVideoQuizAnswerApi(
+  taskId: string,
+  sessionIdOrPayload: string | { sessionId: string; selectedOptionIndex: number },
+  selectedOptionIndex?: number
+): Promise<{
+  success: boolean;
+  data: {
+    isCorrect: boolean;
+    attemptsCount: number;
+    message: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        isCorrect: true,
+        attemptsCount: 1,
+        message: 'Correct answer verified (Demo Mode)',
+      },
+    };
+  }
+
+  const body =
+    typeof sessionIdOrPayload === 'string'
+      ? { sessionId: sessionIdOrPayload, selectedOptionIndex: selectedOptionIndex ?? 0 }
+      : sessionIdOrPayload;
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      isCorrect: boolean;
+      attemptsCount: number;
+      message: string;
+    };
+  }>(`/tasks/${taskId}/video-session/quiz`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/app-feedback/submit
+ * Submits user testing feedback and awards promotional points.
+ */
+export async function submitAppFeedbackApi(
+  taskId: string,
+  payload: {
+    feedback: string;
+    rating?: number;
+    answer?: string;
+  }
+): Promise<{
+  success: boolean;
+  data: {
+    status: 'VERIFIED';
+    rewardPoints: number;
+    completionId: string;
+    message: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        status: 'VERIFIED',
+        rewardPoints: 25,
+        completionId: `demo-feedback-comp-${taskId}`,
+        message: 'Feedback submitted and points credited (Demo Mode)',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      status: 'VERIFIED';
+      rewardPoints: number;
+      completionId: string;
+      message: string;
+    };
+  }>(`/tasks/${taskId}/app-feedback/submit`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 

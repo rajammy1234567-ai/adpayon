@@ -16,7 +16,14 @@ export interface Campaign {
   updatedAt: string;
 }
 
-export type TaskCategory = 'IN_APP_ACTION' | 'PARTNER_WEBHOOK' | 'SURVEY' | 'MANUAL_VERIFY';
+export type TaskCategory =
+  | 'IN_APP_ACTION'
+  | 'PARTNER_WEBHOOK'
+  | 'SURVEY'
+  | 'MANUAL_VERIFY'
+  | 'ARTICLE_READ'
+  | 'VIDEO_WATCH'
+  | 'APP_INSTALL';
 export type VerificationMethod = 'FIRST_PARTY_ACTION' | 'AUTHENTICATED_WEBHOOK' | 'MANUAL_REVIEW';
 export type TaskStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED';
 
@@ -24,6 +31,43 @@ export interface TaskTargeting {
   minAncestryDepth?: number;
   kycRequired?: boolean;
   allowedStates?: string[];
+}
+
+export interface ComprehensionQuiz {
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+}
+
+export interface ArticleReadConfig {
+  articleTitle: string;
+  articleContent: string;
+  sourceUrl?: string;
+  minReadDurationSeconds: number;
+  minScrollPercentage: number;
+  comprehensionQuiz?: ComprehensionQuiz;
+}
+
+export interface VideoWatchConfig {
+  videoUrl: string;
+  videoDurationSeconds: number;
+  videoDuration?: number;
+  requiredWatchSeconds: number;
+  allowSeeking?: boolean;
+  sessionTimeoutSeconds?: number;
+  completionPolicy?: 'FULL_VIDEO' | 'MINIMUM_DURATION';
+  comprehensionQuiz?: ComprehensionQuiz;
+}
+
+export interface AppInstallConfig {
+  appName: string;
+  packageName: string;
+  platform: 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
+  storeUrl: string;
+  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK';
+  conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+  testingSteps?: string;
+  feedbackQuestion?: string;
 }
 
 export interface Task {
@@ -49,6 +93,10 @@ export interface Task {
   targeting?: TaskTargeting;
   externalActionUrl?: string;
   instructions?: string;
+  articleReadConfig?: ArticleReadConfig;
+  videoWatchConfig?: VideoWatchConfig;
+  appInstallConfig?: AppInstallConfig;
+  expiresAt?: string;
   status: TaskStatus;
   createdAt: string;
   updatedAt: string;

@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -21,6 +22,7 @@ import {
   getTaskStatusApi,
   startTaskApi,
   recordStoreVisitApi,
+  submitAppFeedbackApi,
   getTaskSummaryApi,
   TaskFeedItem,
   TaskStatusResponse,
@@ -74,6 +76,38 @@ export const AppInstallTaskScreen: React.FC = () => {
     }
     pollingCyclesRef.current = 0;
   }, []);
+
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackText.trim() || feedbackText.trim().length < 3) {
+      Alert.alert('Feedback Required', 'Please enter at least a few words describing your testing experience.');
+      return;
+    }
+    setIsSubmittingFeedback(true);
+    try {
+      const res = await submitAppFeedbackApi(taskId, {
+        feedback: feedbackText.trim(),
+        rating: feedbackRating,
+      });
+      if (res.success) {
+        setDisplayStatus('VERIFIED');
+        setVerifiedPoints(res.data.rewardPoints || task?.rewardPoints || 0);
+        stopPolling();
+        Alert.alert(
+          '🎉 Feedback Verified!',
+          `+${res.data.rewardPoints || task?.rewardPoints || 0} Promotional Points credited to your balance.`,
+          [{ text: 'Great!', onPress: () => navigation.goBack() }]
+        );
+      }
+    } catch (err: any) {
+      Alert.alert('Submission Failed', err.message || 'Unable to submit feedback at this time.');
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
 
   /**
    * Evaluates authoritative backend response and maps to display status.
@@ -543,6 +577,64 @@ export const AppInstallTaskScreen: React.FC = () => {
           )}
         </View>
 
+        {/* In-App Feedback & Verification Card */}
+        {displayStatus !== 'VERIFIED' && displayStatus !== 'EXPIRED' && (
+          <View style={styles.feedbackCard}>
+            <View style={styles.feedbackCardHeader}>
+              <Text style={styles.feedbackCardTitle}>📝 Testing Feedback</Text>
+              <Badge label="Required for Reward" variant="active" />
+            </View>
+            <Text style={styles.feedbackCardSubtitle}>
+              {task?.appInstallConfig?.feedbackQuestion ||
+                'What was your experience testing this app? Provide your feedback to verify completion and claim points.'}
+            </Text>
+
+            {/* Rating Stars */}
+            <View style={styles.ratingRow}>
+              <Text style={styles.ratingLabel}>Your Rating:</Text>
+              <View style={styles.starsContainer}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() => setFeedbackRating(star)}
+                    style={styles.starTouch}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.starIcon, feedbackRating >= star ? styles.starActive : styles.starInactive]}>
+                      ★
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Feedback Input */}
+            <TextInput
+              style={styles.feedbackInput}
+              multiline
+              numberOfLines={4}
+              placeholder="Enter your testing feedback (e.g. design was clean, found bug in search, easy onboarding...)"
+              placeholderTextColor={THEME.colors.textMuted}
+              value={feedbackText}
+              onChangeText={setFeedbackText}
+              textAlignVertical="top"
+            />
+
+            <Button
+              title={
+                isSubmittingFeedback
+                  ? 'Submitting Feedback...'
+                  : `Submit Feedback & Claim +${task?.rewardPoints || 0} PTS`
+              }
+              onPress={handleFeedbackSubmit}
+              variant="primary"
+              disabled={isSubmittingFeedback || feedbackText.trim().length < 3}
+              isLoading={isSubmittingFeedback}
+              style={styles.feedbackSubmitButton}
+            />
+          </View>
+        )}
+
         {/* Policy & Safety Disclosure */}
         <View style={styles.safetyCard}>
           <Text style={styles.safetyHeader}>🛡️ Attribution & Privacy Notice</Text>
@@ -953,6 +1045,72 @@ const styles = StyleSheet.create({
   boldText: {
     fontWeight: '700',
     color: THEME.colors.textPrimary,
+  },
+  feedbackCard: {
+    backgroundColor: THEME.colors.surface,
+    borderColor: THEME.colors.border,
+    borderWidth: 1,
+    borderRadius: THEME.borderRadius.lg,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+  },
+  feedbackCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: THEME.spacing.xs,
+  },
+  feedbackCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  feedbackCardSubtitle: {
+    fontSize: 13,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: THEME.spacing.md,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+    marginBottom: THEME.spacing.md,
+  },
+  ratingLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: THEME.colors.textPrimary,
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  starTouch: {
+    padding: 2,
+  },
+  starIcon: {
+    fontSize: 22,
+  },
+  starActive: {
+    color: '#F59E0B',
+  },
+  starInactive: {
+    color: '#4B5563',
+  },
+  feedbackInput: {
+    backgroundColor: THEME.colors.background,
+    borderColor: THEME.colors.border,
+    borderWidth: 1,
+    borderRadius: THEME.borderRadius.md,
+    padding: THEME.spacing.md,
+    color: THEME.colors.textPrimary,
+    fontSize: 13,
+    minHeight: 85,
+    marginBottom: THEME.spacing.md,
+  },
+  feedbackSubmitButton: {
+    width: '100%',
   },
   actionContainer: {
     gap: THEME.spacing.sm,

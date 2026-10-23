@@ -41,6 +41,9 @@ export interface IVideoPlaybackSession extends Document {
   completedAt?: Date;
   rewardGranted: boolean;
   rejectionReason?: string;
+  quizAnswerCorrect?: boolean;
+  quizAttempts?: number;
+  lastQuizAttemptAt?: Date;
   progressEventsCount: number;
   intervals: IVideoPlaybackInterval[];
   coveredSegments: ITimelineCoverageSegment[];
@@ -163,6 +166,17 @@ const videoPlaybackSessionSchema = new Schema<IVideoPlaybackSession>(
     },
     rejectionReason: {
       type: String,
+    },
+    quizAnswerCorrect: {
+      type: Boolean,
+      default: false,
+    },
+    quizAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lastQuizAttemptAt: {
+      type: Date,
     },
     progressEventsCount: {
       type: Number,

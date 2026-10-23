@@ -257,6 +257,10 @@ class ApiClient {
     };
     externalActionUrl?: string;
     instructions?: string;
+    articleReadConfig?: any;
+    videoWatchConfig?: any;
+    appInstallConfig?: any;
+    expiresAt?: string;
   }) {
     return this.request<{ success: boolean; data: { task: Task } }>('/admin/tasks', {
       method: 'POST',
@@ -264,7 +268,7 @@ class ApiClient {
     });
   }
 
-  public async updateTask(id: string, data: Partial<Task>) {
+  public async updateTask(id: string, data: Partial<Task> & { articleReadConfig?: any; videoWatchConfig?: any; appInstallConfig?: any; expiresAt?: string }) {
     return this.request<{ success: boolean; data: { task: Task } }>(`/admin/tasks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -279,6 +283,12 @@ class ApiClient {
 
   public async pauseTask(id: string) {
     return this.request<{ success: boolean; data: { task: Task } }>(`/admin/tasks/${id}/pause`, {
+      method: 'POST',
+    });
+  }
+
+  public async expireTask(id: string) {
+    return this.request<{ success: boolean; data: { task: Task } }>(`/admin/tasks/${id}/expire`, {
       method: 'POST',
     });
   }

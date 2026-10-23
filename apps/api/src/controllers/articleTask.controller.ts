@@ -75,6 +75,15 @@ export async function startArticleSession(req: AuthenticatedRequest, res: Respon
     return;
   }
 
+  // 2b. Task Expiration check
+  if (task.expiresAt && new Date(task.expiresAt) <= new Date()) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'TASK_EXPIRED', message: 'This task has expired and is no longer available' },
+    });
+    return;
+  }
+
   // 3. Campaign check
   const campaign = await Campaign.findById(task.campaignId);
   if (!campaign || campaign.status !== 'ACTIVE') {

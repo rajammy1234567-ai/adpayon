@@ -232,6 +232,14 @@ export async function startVideoSession(req: AuthenticatedRequest, res: Response
           remainingWatchSeconds: remainingSeconds,
           status: existingSession.status,
           expiresAt: existingSession.expiresAt,
+          hasQuiz: Boolean(task.videoWatchConfig?.comprehensionQuiz?.question),
+          comprehensionQuiz: task.videoWatchConfig?.comprehensionQuiz?.question
+            ? {
+                question: task.videoWatchConfig.comprehensionQuiz.question,
+                options: task.videoWatchConfig.comprehensionQuiz.options,
+              }
+            : undefined,
+          quizAnswerCorrect: Boolean(existingSession.quizAnswerCorrect),
         },
       });
       return;
@@ -311,6 +319,14 @@ export async function startVideoSession(req: AuthenticatedRequest, res: Response
       remainingWatchSeconds: remainingSeconds,
       status: videoSession.status,
       expiresAt: videoSession.expiresAt,
+      hasQuiz: Boolean(task.videoWatchConfig?.comprehensionQuiz?.question),
+      comprehensionQuiz: task.videoWatchConfig?.comprehensionQuiz?.question
+        ? {
+            question: task.videoWatchConfig.comprehensionQuiz.question,
+            options: task.videoWatchConfig.comprehensionQuiz.options,
+          }
+        : undefined,
+      quizAnswerCorrect: false,
     },
   });
 }
@@ -657,6 +673,84 @@ export async function getVideoSessionStatus(req: AuthenticatedRequest, res: Resp
 }
 
 /**
+ * POST /api/tasks/:id/video-session/quiz
+ * Validates the comprehension question for a video learning task.
+ */
+export async function submitVideoQuizAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const user = req.user!;
+  const { sessionId, selectedOptionIndex } = req.body;
+
+  if (!Types.ObjectId.isValid(id)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'Invalid task ID format' },
+    });
+    return;
+  }
+
+  if (typeof selectedOptionIndex !== 'number' || selectedOptionIndex < 0) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QUIZ_SELECTION', message: 'Valid selectedOptionIndex is required' },
+    });
+    return;
+  }
+
+  const task = await Task.findById(id);
+  if (!task || task.category !== 'VIDEO_WATCH') {
+    res.status(404).json({
+      success: false,
+      error: { code: 'TASK_NOT_FOUND', message: 'Video learning task not found' },
+    });
+    return;
+  }
+
+  const quiz = task.videoWatchConfig?.comprehensionQuiz;
+  if (!quiz || !quiz.question) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'NO_QUIZ_CONFIGURED', message: 'This video task does not have a quiz configured' },
+    });
+    return;
+  }
+
+  const videoSession = await VideoPlaybackSession.findOne({ sessionId, taskId: task._id, userId: user._id });
+  if (!videoSession) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'SESSION_NOT_FOUND', message: 'Active video session not found' },
+    });
+    return;
+  }
+
+  if (videoSession.status !== 'ACTIVE' || videoSession.expiresAt <= new Date()) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'SESSION_EXPIRED', message: 'Video session has expired' },
+    });
+    return;
+  }
+
+  const isCorrect = selectedOptionIndex === quiz.correctOptionIndex;
+  videoSession.quizAttempts = (videoSession.quizAttempts || 0) + 1;
+  videoSession.lastQuizAttemptAt = new Date();
+  if (isCorrect) {
+    videoSession.quizAnswerCorrect = true;
+  }
+  await videoSession.save();
+
+  res.status(200).json({
+    success: true,
+    data: {
+      isCorrect,
+      attemptsCount: videoSession.quizAttempts,
+      message: isCorrect ? 'Correct! You can now claim your reward.' : 'Incorrect answer. Please re-read and try again.',
+    },
+  });
+}
+
+/**
  * POST /api/tasks/:id/video-session/verify
  * Authoritative video watch verification and atomic promotional reward distribution.
  * Executes authoritative CURRENT transaction ordering:
@@ -964,6 +1058,41 @@ export async function verifyVideoWatch(req: AuthenticatedRequest, res: Response)
       },
     });
     return;
+  }
+
+  // Comprehension quiz check if configured for this video learning task
+  const videoQuiz = task.videoWatchConfig?.comprehensionQuiz;
+  if (videoQuiz && videoQuiz.question) {
+    let quizPassed = Boolean(videoSession.quizAnswerCorrect);
+    if (!quizPassed && typeof req.body?.selectedOptionIndex === 'number') {
+      if (req.body.selectedOptionIndex === videoQuiz.correctOptionIndex) {
+        quizPassed = true;
+        videoSession.quizAnswerCorrect = true;
+        await videoSession.save();
+      }
+    }
+
+    if (!quizPassed) {
+      await TaskEvent.create({
+        assignmentId: assignment._id,
+        taskId: task._id,
+        userId: user._id,
+        eventType: 'VERIFY_FAIL',
+        payload: {
+          reason: 'QUIZ_NOT_PASSED',
+        },
+        ipAddress: req.ip || '127.0.0.1',
+      });
+
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'QUIZ_NOT_PASSED',
+          message: 'You must answer the verification question correctly before claiming your reward.',
+        },
+      });
+      return;
+    }
   }
 
   // Authoritative Reward Transaction (CURRENT Transaction Ordering)

@@ -181,9 +181,35 @@ export const appInstallConfigSchema = z.object({
     .refine((val) => isSafePublicUrl(val).valid, {
       message: 'Store URL must be a valid, public HTTP/HTTPS URL',
     }),
-  attributionMethod: z.enum(['SIGNED_POSTBACK', 'MANUAL_REVIEW']),
+  attributionMethod: z.enum(['SIGNED_POSTBACK', 'MANUAL_REVIEW', 'IN_APP_FEEDBACK']),
   conversionEvent: z.enum(['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE']),
+  testingSteps: z.string().trim().max(2000, 'Testing steps cannot exceed 2000 characters').optional(),
+  feedbackQuestion: z.string().trim().max(500, 'Feedback question cannot exceed 500 characters').optional(),
 });
+
+export const comprehensionQuizSchema = z
+  .object({
+    question: z
+      .string()
+      .trim()
+      .min(5, 'Quiz question must contain at least 5 characters')
+      .max(300, 'Quiz question cannot exceed 300 characters')
+      .refine((val) => isSafeContent(val).valid, {
+        message: 'Quiz question contains invalid or unsafe script/HTML tags',
+      }),
+    options: z
+      .array(z.string().trim().min(1, 'Option cannot be empty').max(150, 'Option cannot exceed 150 characters'))
+      .min(2, 'Quiz must have at least 2 options')
+      .max(6, 'Quiz cannot have more than 6 options'),
+    correctOptionIndex: z
+      .number()
+      .int('Correct option index must be an integer')
+      .min(0, 'Correct option index cannot be negative'),
+  })
+  .refine((data) => data.correctOptionIndex < data.options.length, {
+    message: 'Correct option index must point to a valid option in the options array',
+    path: ['correctOptionIndex'],
+  });
 
 export const videoWatchConfigSchema = z
   .object({
@@ -212,34 +238,11 @@ export const videoWatchConfigSchema = z
       .max(7200, 'Session timeout cannot exceed 7200 seconds')
       .default(1800),
     completionPolicy: z.enum(['FULL_VIDEO', 'MINIMUM_DURATION']).default('FULL_VIDEO'),
+    comprehensionQuiz: comprehensionQuizSchema.optional(),
   })
   .refine((data) => data.requiredWatchSeconds <= data.videoDurationSeconds, {
     message: 'Required watch duration cannot exceed total video duration',
     path: ['requiredWatchSeconds'],
-  });
-
-export const comprehensionQuizSchema = z
-  .object({
-    question: z
-      .string()
-      .trim()
-      .min(5, 'Quiz question must contain at least 5 characters')
-      .max(300, 'Quiz question cannot exceed 300 characters')
-      .refine((val) => isSafeContent(val).valid, {
-        message: 'Quiz question contains invalid or unsafe script/HTML tags',
-      }),
-    options: z
-      .array(z.string().trim().min(1, 'Option cannot be empty').max(150, 'Option cannot exceed 150 characters'))
-      .min(2, 'Quiz must have at least 2 options')
-      .max(6, 'Quiz cannot have more than 6 options'),
-    correctOptionIndex: z
-      .number()
-      .int('Correct option index must be an integer')
-      .min(0, 'Correct option index cannot be negative'),
-  })
-  .refine((data) => data.correctOptionIndex < data.options.length, {
-    message: 'Correct option index must point to a valid option in the options array',
-    path: ['correctOptionIndex'],
   });
 
 export const articleReadConfigSchema = z.object({

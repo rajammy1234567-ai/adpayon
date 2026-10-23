@@ -134,7 +134,7 @@ export function validatePostbackTimestamp(
  * Case-insensitive comparison.
  */
 export function validateConversionEventMatch(
-  configuredEvent: AppInstallConversionEvent,
+  configuredEvent: AppInstallConversionEvent | undefined,
   incomingEvent: string
 ): { valid: boolean; error?: string } {
   if (!incomingEvent || typeof incomingEvent !== 'string') {
@@ -142,7 +142,7 @@ export function validateConversionEventMatch(
   }
 
   const normalizedIncoming = incomingEvent.trim().toUpperCase();
-  const normalizedConfigured = String(configuredEvent).trim().toUpperCase();
+  const normalizedConfigured = String(configuredEvent || 'INSTALL').trim().toUpperCase();
 
   if (normalizedIncoming !== normalizedConfigured) {
     return {
@@ -350,7 +350,7 @@ export function validateAppInstallPostbackContext(
 
   // 8. Conversion event match check
   const eventCheck = validateConversionEventMatch(
-    context.task.appInstallConfig!.conversionEvent,
+    context.task.appInstallConfig!.conversionEvent || 'INSTALL',
     payload.event
   );
   if (!eventCheck.valid) {

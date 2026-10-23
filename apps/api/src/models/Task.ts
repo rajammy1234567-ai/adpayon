@@ -16,8 +16,10 @@ export interface IAppInstallConfig {
   packageName: string;
   platform: 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
   storeUrl: string;
-  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW';
+  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK';
   conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+  testingSteps?: string;
+  feedbackQuestion?: string;
 }
 
 export type VideoCompletionPolicy = 'FULL_VIDEO' | 'MINIMUM_DURATION';
@@ -29,6 +31,7 @@ export interface IVideoWatchConfig {
   allowSeeking: boolean;
   sessionTimeoutSeconds: number;
   completionPolicy?: VideoCompletionPolicy;
+  comprehensionQuiz?: IArticleReadComprehensionQuiz;
 }
 
 export interface IArticleReadComprehensionQuiz {
@@ -71,6 +74,7 @@ export interface ITask extends Document {
   appInstallConfig?: IAppInstallConfig;
   videoWatchConfig?: IVideoWatchConfig;
   articleReadConfig?: IArticleReadConfig;
+  expiresAt?: Date;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -184,8 +188,10 @@ const taskSchema = new Schema<ITask>(
         packageName: { type: String, trim: true, maxlength: 150 },
         platform: { type: String, enum: ['ANDROID', 'IOS', 'CROSS_PLATFORM'] },
         storeUrl: { type: String, trim: true, maxlength: 500 },
-        attributionMethod: { type: String, enum: ['SIGNED_POSTBACK', 'MANUAL_REVIEW'] },
+        attributionMethod: { type: String, enum: ['SIGNED_POSTBACK', 'MANUAL_REVIEW', 'IN_APP_FEEDBACK'] },
         conversionEvent: { type: String, enum: ['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE'] },
+        testingSteps: { type: String, trim: true, maxlength: 2000 },
+        feedbackQuestion: { type: String, trim: true, maxlength: 500 },
       },
       required: false,
       _id: false,
@@ -201,6 +207,15 @@ const taskSchema = new Schema<ITask>(
           type: String,
           enum: ['FULL_VIDEO', 'MINIMUM_DURATION'],
           default: 'FULL_VIDEO',
+        },
+        comprehensionQuiz: {
+          type: {
+            question: { type: String, trim: true, maxlength: 300 },
+            options: { type: [String] },
+            correctOptionIndex: { type: Number, min: 0 },
+          },
+          required: false,
+          _id: false,
         },
       },
       required: false,
@@ -231,6 +246,10 @@ const taskSchema = new Schema<ITask>(
       ref: 'User',
       required: [true, 'Admin creator reference is required'],
     },
+    expiresAt: {
+      type: Date,
+      required: false,
+    },
   },
   {
     timestamps: true,
@@ -239,6 +258,7 @@ const taskSchema = new Schema<ITask>(
 );
 
 taskSchema.index({ status: 1, createdAt: -1 });
+taskSchema.index({ status: 1, expiresAt: 1 });
 taskSchema.index({ campaignId: 1, status: 1 });
 taskSchema.index({ category: 1, status: 1 });
 taskSchema.index({ 'targeting.kycRequired': 1 });

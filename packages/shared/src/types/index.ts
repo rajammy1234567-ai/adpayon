@@ -340,16 +340,18 @@ export type VerificationMethod =
   | 'MANUAL_REVIEW';
 
 export type AppInstallPlatform = 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
-export type AppInstallAttributionMethod = 'SIGNED_POSTBACK' | 'MANUAL_REVIEW';
+export type AppInstallAttributionMethod = 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK';
 export type AppInstallConversionEvent = 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
 
 export interface AppInstallConfig {
   appName: string;
   packageName: string;
-  platform: AppInstallPlatform;
-  storeUrl: string;
+  platform?: AppInstallPlatform;
+  storeUrl?: string;
   attributionMethod: AppInstallAttributionMethod;
-  conversionEvent: AppInstallConversionEvent;
+  conversionEvent?: AppInstallConversionEvent;
+  testingSteps?: string;
+  feedbackQuestion?: string;
 }
 
 export type VideoCompletionPolicy = 'FULL_VIDEO' | 'MINIMUM_DURATION';
@@ -361,6 +363,11 @@ export interface VideoWatchConfig {
   allowSeeking: boolean;
   sessionTimeoutSeconds: number;
   completionPolicy?: VideoCompletionPolicy;
+  comprehensionQuiz?: {
+    question: string;
+    options: string[];
+    correctOptionIndex?: number;
+  };
 }
 
 export interface ArticleReadComprehensionQuizAdmin {
@@ -411,6 +418,13 @@ export interface VideoSessionData {
   status: VideoSessionStatus;
   expiresAt: string | Date;
   isQualified?: boolean;
+  hasQuiz?: boolean;
+  comprehensionQuiz?: {
+    question: string;
+    options: string[];
+  };
+  quizAnswerCorrect?: boolean;
+  quizAttempts?: number;
 }
 
 export interface VideoSessionProgressPayload {

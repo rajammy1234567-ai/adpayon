@@ -87,10 +87,10 @@ export function validateTaskCategoryAndConfigs(
         path: ['articleReadConfig'],
       });
     }
-    if (verificationMethod === 'FIRST_PARTY_ACTION') {
+    if (verificationMethod === 'FIRST_PARTY_ACTION' && configs.appInstallConfig?.attributionMethod !== 'IN_APP_FEEDBACK') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'APP_INSTALL tasks cannot use FIRST_PARTY_ACTION verification. Use AUTHENTICATED_WEBHOOK or MANUAL_REVIEW.',
+        message: 'APP_INSTALL tasks with signed postback or manual review cannot use FIRST_PARTY_ACTION verification. Use AUTHENTICATED_WEBHOOK, MANUAL_REVIEW, or select IN_APP_FEEDBACK.',
         path: ['verificationMethod'],
       });
     }
@@ -106,6 +106,13 @@ export function validateTaskCategoryAndConfigs(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'verificationMethod must be MANUAL_REVIEW when attributionMethod is MANUAL_REVIEW',
+          path: ['verificationMethod'],
+        });
+      }
+      if (configs.appInstallConfig.attributionMethod === 'IN_APP_FEEDBACK' && verificationMethod !== 'FIRST_PARTY_ACTION') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'verificationMethod must be FIRST_PARTY_ACTION when attributionMethod is IN_APP_FEEDBACK',
           path: ['verificationMethod'],
         });
       }
@@ -250,6 +257,7 @@ const createTaskSchema = z
     appInstallConfig: appInstallConfigSchema.optional(),
     videoWatchConfig: videoWatchConfigSchema.optional(),
     articleReadConfig: articleReadConfigSchema.optional(),
+    expiresAt: z.preprocess(emptyToUndefined, z.string().datetime().optional()),
   })
   .superRefine((data, ctx) => {
     validateTaskCategoryAndConfigs(data.category, data.verificationMethod, data, ctx);
@@ -301,6 +309,7 @@ const updateTaskSchema = z
     appInstallConfig: appInstallConfigSchema.optional(),
     videoWatchConfig: videoWatchConfigSchema.optional(),
     articleReadConfig: articleReadConfigSchema.optional(),
+    expiresAt: z.preprocess(emptyToUndefined, z.string().datetime().optional()),
   })
   .superRefine((data, ctx) => {
     if (data.category) {
@@ -717,6 +726,7 @@ export async function createTask(req: AuthenticatedRequest, res: Response): Prom
         appInstallConfig: task.appInstallConfig,
         videoWatchConfig: task.videoWatchConfig,
         articleReadConfig: task.articleReadConfig,
+        expiresAt: task.expiresAt,
         createdAt: task.createdAt,
       },
     },
@@ -787,6 +797,7 @@ export async function listTasks(req: AuthenticatedRequest, res: Response): Promi
           appInstallConfig: t.appInstallConfig,
           videoWatchConfig: t.videoWatchConfig,
           articleReadConfig: t.articleReadConfig,
+          expiresAt: t.expiresAt,
           createdAt: t.createdAt,
         };
       }),
@@ -928,6 +939,7 @@ export async function updateTask(req: AuthenticatedRequest, res: Response): Prom
         appInstallConfig: task.appInstallConfig,
         videoWatchConfig: task.videoWatchConfig,
         articleReadConfig: task.articleReadConfig,
+        expiresAt: task.expiresAt,
         updatedAt: task.updatedAt,
       },
     },
@@ -1010,6 +1022,37 @@ export async function publishTask(req: AuthenticatedRequest, res: Response): Pro
     return;
   }
 
+  // Completeness check before publication: prevent publishing incomplete tasks
+  if (task.category === 'ARTICLE_READ') {
+    if (
+      !task.articleReadConfig ||
+      !task.articleReadConfig.articleTitle ||
+      !task.articleReadConfig.articleContent ||
+      task.articleReadConfig.articleContent.trim().length < 30
+    ) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INCOMPLETE_TASK_CONFIG',
+          message: 'Cannot publish task: Article title and content (at least 30 characters) are required for ARTICLE_READ tasks',
+        },
+      });
+      return;
+    }
+  }
+
+  // Expiration check: cannot publish an already-expired task
+  if (task.expiresAt && new Date(task.expiresAt) <= new Date()) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'TASK_EXPIRED',
+        message: 'Cannot publish task: Task expiration date has already passed',
+      },
+    });
+    return;
+  }
+
   task.status = 'PUBLISHED';
   await task.save();
 
@@ -1078,6 +1121,56 @@ export async function pauseTask(req: AuthenticatedRequest, res: Response): Promi
         id: task._id.toString(),
         title: task.title,
         status: task.status,
+      },
+    },
+  });
+}
+
+/**
+ * POST /api/admin/tasks/:id/expire
+ * Immediately expires and archives an earner task.
+ */
+export async function expireTask(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  if (!Types.ObjectId.isValid(id)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'Invalid task ID format' },
+    });
+    return;
+  }
+
+  const task = await Task.findById(id);
+  if (!task) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Task not found' },
+    });
+    return;
+  }
+
+  const previousStatus = task.status;
+  task.status = 'ARCHIVED';
+  task.expiresAt = new Date();
+  await task.save();
+
+  await AdminAuditLog.create({
+    adminId: req.user!._id,
+    action: 'EXPIRE_TASK',
+    targetEntity: 'Task',
+    targetId: task._id.toString(),
+    details: { previousStatus, expiredAt: task.expiresAt },
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      task: {
+        id: task._id.toString(),
+        title: task.title,
+        status: task.status,
+        expiresAt: task.expiresAt,
       },
     },
   });
@@ -1368,6 +1461,7 @@ export async function getTaskDetails(req: AuthenticatedRequest, res: Response): 
         appInstallConfig: task.appInstallConfig,
         videoWatchConfig: task.videoWatchConfig,
         articleReadConfig: task.articleReadConfig,
+        expiresAt: task.expiresAt,
         status: task.status,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
