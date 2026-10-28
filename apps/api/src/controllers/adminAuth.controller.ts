@@ -135,7 +135,15 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
   });
 
   // 6. Dispatch 2FA OTP to registered admin mobile
-  await createAndSendOtp(user.mobile!, 'LOGIN');
+  const otpResult = await createAndSendOtp(user.mobile!, 'LOGIN');
+  if (!otpResult.success) {
+    logger.error({ mobile: normalizedMobile, err: otpResult.error }, 'Failed to dispatch admin 2FA OTP');
+    res.status(500).json({
+      success: false,
+      error: { code: 'OTP_DISPATCH_FAILED', message: otpResult.error || 'Failed to dispatch verification code' },
+    });
+    return;
+  }
 
   // Mask mobile for security display (e.g., +91 ••••• ••210)
   const maskedMobile = (user.mobile || '').replace(/(\+\d{2})(\d{5})(\d{3})(\d{2})/, '$1 ••••• ••$4');

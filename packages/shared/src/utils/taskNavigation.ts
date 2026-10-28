@@ -7,18 +7,25 @@
 
 export type NavigationDestination =
   | { screen: 'VideoWatchTask'; params: { taskId: string; assignmentId?: string } }
+  | { screen: 'YouTubeLearningTask'; params: { taskId: string; assignmentId?: string } }
   | { screen: 'ArticleReadTask'; params: { taskId: string; assignmentId?: string } }
   | { screen: 'AppInstallTask'; params: { taskId: string; assignmentId?: string } }
   | { screen: 'LegacyModal'; params: { taskId: string } };
 
 /**
  * Returns true if the task category is permitted to use the legacy generic task modal.
- * Specialized tasks (VIDEO_WATCH, ARTICLE_READ, APP_INSTALL) are strictly excluded.
+ * Specialized tasks (VIDEO_WATCH, YOUTUBE_LEARNING, ARTICLE_READ, APP_INSTALL, APP_TESTING) are strictly excluded.
  */
 export function isLegacyModalAllowed(category?: string | null): boolean {
   if (!category) return false;
   const normalized = String(category).trim().toUpperCase();
-  if (normalized === 'VIDEO_WATCH' || normalized === 'ARTICLE_READ' || normalized === 'APP_INSTALL') {
+  if (
+    normalized === 'VIDEO_WATCH' ||
+    normalized === 'YOUTUBE_LEARNING' ||
+    normalized === 'ARTICLE_READ' ||
+    normalized === 'APP_INSTALL' ||
+    normalized === 'APP_TESTING'
+  ) {
     return false;
   }
   return true;
@@ -45,6 +52,16 @@ export function resolveTaskNavigation(task: {
     };
   }
 
+  if (normalized === 'YOUTUBE_LEARNING') {
+    return {
+      screen: 'YouTubeLearningTask',
+      params: {
+        taskId: task.id,
+        assignmentId: task.activeAssignment?.id,
+      },
+    };
+  }
+
   if (normalized === 'ARTICLE_READ') {
     return {
       screen: 'ArticleReadTask',
@@ -55,7 +72,7 @@ export function resolveTaskNavigation(task: {
     };
   }
 
-  if (normalized === 'APP_INSTALL') {
+  if (normalized === 'APP_INSTALL' || normalized === 'APP_TESTING') {
     return {
       screen: 'AppInstallTask',
       params: {
@@ -92,14 +109,16 @@ export function getTaskActionButtonLabel(
   const normalized = String(task.category || '').trim().toUpperCase();
 
   if (task.hasActiveAssignment) {
-    if (normalized === 'APP_INSTALL') return 'Check Install Status 📱';
+    if (normalized === 'APP_INSTALL' || normalized === 'APP_TESTING') return 'Check Testing Status 📱';
     if (normalized === 'ARTICLE_READ') return 'Resume Reading 📖';
     if (normalized === 'VIDEO_WATCH') return 'Resume Video 🎬';
+    if (normalized === 'YOUTUBE_LEARNING') return 'Resume Learning 📺';
     return 'Resume Task ⏱️';
   }
 
-  if (normalized === 'APP_INSTALL') return `Discover App (+${task.rewardPoints} PTS)`;
+  if (normalized === 'APP_INSTALL' || normalized === 'APP_TESTING') return `Test App (+${task.rewardPoints} PTS)`;
   if (normalized === 'ARTICLE_READ') return `Read Article (+${task.rewardPoints} PTS)`;
   if (normalized === 'VIDEO_WATCH') return `Watch Video (+${task.rewardPoints} PTS)`;
+  if (normalized === 'YOUTUBE_LEARNING') return `Watch & Learn (+${task.rewardPoints} PTS)`;
   return `Start Task (+${task.rewardPoints} PTS)`;
 }

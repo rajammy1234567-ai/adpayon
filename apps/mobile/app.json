@@ -24,7 +24,14 @@
     "plugins": [
       "expo-secure-store",
       "expo-video",
-      "./plugins/withAndroidTargetSdk36"
+      "./plugins/withAndroidTargetSdk36",
+      [
+        "./plugins/withScopedPackageQueries",
+        [
+          "com.sfarmart.userapp"
+        ]
+      ],
+      "./plugins/withPackageInstallChecker"
     ],
     "extra": {
       "eas": {

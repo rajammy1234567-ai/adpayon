@@ -10,6 +10,7 @@ import {
   TaskEvent,
   VerificationEvidence,
   ArticleReadingSession,
+  WalletLedgerEntry,
 } from '../models';
 import { taskVerificationMutex, QueueOverloadError } from '../utils/keyedMutex';
 import { TaskVerificationError } from './userTask.controller';
@@ -189,10 +190,42 @@ export async function startArticleSession(req: AuthenticatedRequest, res: Respon
     }
   }
 
-  if (assignment.status === 'COMPLETED') {
-    res.status(400).json({
-      success: false,
-      error: { code: 'ASSIGNMENT_ALREADY_COMPLETED', message: 'This assignment is already completed' },
+  // Reconcile completed assignment / verification before checking expiration or active session
+  const existingCompletion = await TaskCompletion.findOne({
+    taskId: task._id,
+    userId: user._id,
+    status: 'VERIFIED',
+  });
+
+  if (assignment.status === 'COMPLETED' || existingCompletion) {
+    const minDur = task.articleReadConfig.minReadDurationSeconds || 30;
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionId: `completed-${assignment._id}`,
+        taskId: task._id.toString(),
+        assignmentId: assignment._id.toString(),
+        articleTitle: task.articleReadConfig.articleTitle,
+        articleContent: task.articleReadConfig.articleContent,
+        sourceUrl: task.articleReadConfig.sourceUrl,
+        minReadDurationSeconds: minDur,
+        minScrollPercentage: task.articleReadConfig.minScrollPercentage || 80,
+        accumulatedReadSeconds: minDur,
+        maxScrollPercentage: 100,
+        remainingReadSeconds: 0,
+        status: 'COMPLETED',
+        isCompleted: true,
+        rewardGranted: true,
+        hasQuiz: Boolean(task.articleReadConfig.comprehensionQuiz?.question),
+        quizQuestion: task.articleReadConfig.comprehensionQuiz?.question,
+        quizOptions: task.articleReadConfig.comprehensionQuiz?.options,
+        quizAnswered: true,
+        quizAnswerCorrect: true,
+        quizAttempts: 1,
+        quizMaxAttempts: 3,
+        isQualified: true,
+        expiresAt: assignment.expiresAt,
+      },
     });
     return;
   }
@@ -1022,6 +1055,26 @@ export async function verifyArticleRead(req: AuthenticatedRequest, res: Response
               verificationMethod: 'FIRST_PARTY_ACTION',
               evidenceId: evidenceDocs[0]._id,
               completedAt: new Date(),
+            },
+          ],
+          { session: dbSession }
+        );
+
+        // Step 4b: Insert Wallet Ledger Entry (Reward)
+        await WalletLedgerEntry.create(
+          [
+            {
+              userId: user._id,
+              entryType: 'TASK_REWARD',
+              amountPaise: task.rewardPoints,
+              pointsEquivalent: task.rewardPoints,
+              status: 'CONFIRMED',
+              balanceBeforePaise: 0,
+              balanceAfterPaise: task.rewardPoints,
+              referenceEntity: 'TaskCompletion',
+              referenceId: completionDocs[0]._id,
+              idempotencyKey: `article-reward-${completionDocs[0]._id}`,
+              notes: `Article reading reward for "${task.title}"`,
             },
           ],
           { session: dbSession }

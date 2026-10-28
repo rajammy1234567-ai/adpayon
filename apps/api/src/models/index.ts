@@ -13,3 +13,5 @@ export * from './VideoPlaybackSession';
 export * from './ArticleReadingSession';
 export * from './WalletLedgerEntry';
 export * from './WithdrawalRequest';
+export * from './YouTubeLearningSession';
+export * from './ExternalLinkSession';

@@ -22,6 +22,7 @@ import {
   getTaskStatusApi,
   startTaskApi,
   recordStoreVisitApi,
+  verifyAppInstallApi,
   submitAppFeedbackApi,
   getTaskSummaryApi,
   TaskFeedItem,
@@ -33,6 +34,11 @@ import {
   buildCanonicalPlayStoreUrl,
   buildMarketIntentUri,
 } from '@adpayon/shared';
+import {
+  checkPackageInstallation,
+  openInstalledPackage,
+  InstallationStatus,
+} from '../../modules/packageInstallChecker';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 
@@ -63,6 +69,35 @@ export const AppInstallTaskScreen: React.FC = () => {
   const [hasOpenedStore, setHasOpenedStore] = useState(false);
   const [verifiedPoints, setVerifiedPoints] = useState<number | null>(null);
 
+  const taskRef = useRef<TaskFeedItem | null>(null);
+  const hasOpenedStoreRef = useRef(false);
+
+  useEffect(() => {
+    taskRef.current = task;
+  }, [task]);
+
+  useEffect(() => {
+    hasOpenedStoreRef.current = hasOpenedStore;
+  }, [hasOpenedStore]);
+
+  // Local package installation checking state
+  const [initialInstallStatus, setInitialInstallStatus] = useState<InstallationStatus | null>(null);
+  const [currentInstallStatus, setCurrentInstallStatus] = useState<InstallationStatus | 'CHECKING' | null>(null);
+  const [installCheckMessage, setInstallCheckMessage] = useState<string | null>(null);
+  const [wasPreinstalled, setWasPreinstalled] = useState(false);
+  const [isOpeningApp, setIsOpeningApp] = useState(false);
+  const [isLaunchingStore, setIsLaunchingStore] = useState(false);
+  const [isVerifyingReward, setIsVerifyingReward] = useState(false);
+  const [verifySuccessMessage, setVerifySuccessMessage] = useState<string | null>(null);
+
+  const initialInstallStatusRef = useRef<InstallationStatus | null>(null);
+  const currentInstallStatusRef = useRef<InstallationStatus | 'CHECKING' | null>(null);
+  const hasBackgroundedRef = useRef(false);
+  const isActionInFlightRef = useRef(false);
+  const isCheckingInstallRef = useRef(false);
+  const isVerifyingRef = useRef(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
   // Polling control
   const pollingCyclesRef = useRef(0);
   const maxPollingCycles = 12; // Bounded to 12 cycles (72 seconds max)
@@ -79,6 +114,7 @@ export const AppInstallTaskScreen: React.FC = () => {
 
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackRating, setFeedbackRating] = useState(5);
+  const [completionCodeInput, setCompletionCodeInput] = useState('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const handleFeedbackSubmit = async () => {
@@ -86,21 +122,36 @@ export const AppInstallTaskScreen: React.FC = () => {
       Alert.alert('Feedback Required', 'Please enter at least a few words describing your testing experience.');
       return;
     }
+    if (task?.appInstallConfig?.completionCode && !completionCodeInput.trim()) {
+      Alert.alert('Completion Code Required', 'Please enter the partner completion code provided by the app.');
+      return;
+    }
     setIsSubmittingFeedback(true);
     try {
       const res = await submitAppFeedbackApi(taskId, {
         feedback: feedbackText.trim(),
         rating: feedbackRating,
+        completionCode: completionCodeInput.trim() || undefined,
       });
       if (res.success) {
-        setDisplayStatus('VERIFIED');
-        setVerifiedPoints(res.data.rewardPoints || task?.rewardPoints || 0);
-        stopPolling();
-        Alert.alert(
-          '🎉 Feedback Verified!',
-          `+${res.data.rewardPoints || task?.rewardPoints || 0} Promotional Points credited to your balance.`,
-          [{ text: 'Great!', onPress: () => navigation.goBack() }]
-        );
+        if (res.data.status === 'PENDING_REVIEW') {
+          setDisplayStatus('PENDING_PARTNER_VERIFICATION');
+          stopPolling();
+          Alert.alert(
+            '⏳ Submitted for Review',
+            'Your testing feedback has been received and queued for administrative review. Points will be released once approved.',
+            [{ text: 'Understood', onPress: () => navigation.goBack() }]
+          );
+        } else {
+          setDisplayStatus('VERIFIED');
+          setVerifiedPoints(res.data.rewardPoints || task?.rewardPoints || 0);
+          stopPolling();
+          Alert.alert(
+            '🎉 Feedback Verified!',
+            `+${res.data.rewardPoints || task?.rewardPoints || 0} Promotional Points credited to your balance.`,
+            [{ text: 'Great!', onPress: () => navigation.goBack() }]
+          );
+        }
       }
     } catch (err: any) {
       Alert.alert('Submission Failed', err.message || 'Unable to submit feedback at this time.');
@@ -145,17 +196,22 @@ export const AppInstallTaskScreen: React.FC = () => {
       }
 
       try {
-        const res = await getTaskStatusApi(taskId);
+        console.log('[DEBUG-APPTASK] getTaskStatusApi calling for taskId:', taskId);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Status check timed out')), 8000)
+        );
+        const res = await Promise.race([getTaskStatusApi(taskId), timeoutPromise]);
+        console.log('[DEBUG-APPTASK] getTaskStatusApi response:', JSON.stringify(res));
         if (res.success && res.data && isComponentMountedRef.current) {
           setStatusResponse(res.data);
-          const mapped = mapServerStatusToDisplay(res.data, hasOpenedStore);
+          const mapped = mapServerStatusToDisplay(res.data, hasOpenedStoreRef.current);
           setDisplayStatus(mapped);
 
           // If conversion has been verified, stop polling and update points
           if (mapped === 'VERIFIED') {
             stopPolling();
-            if (task?.rewardPoints) {
-              setVerifiedPoints(task.rewardPoints);
+            if (taskRef.current?.rewardPoints) {
+              setVerifiedPoints(taskRef.current.rewardPoints);
             }
             getTaskSummaryApi().catch(() => {});
           }
@@ -167,6 +223,7 @@ export const AppInstallTaskScreen: React.FC = () => {
           return res.data;
         }
       } catch (err: any) {
+        console.error('[DEBUG-APPTASK] checkStatus catch error:', err?.message, err?.code, err?.status);
         if (!silent && isComponentMountedRef.current) {
           Alert.alert('Status Sync Notice', err.message || 'Unable to check verification status');
         }
@@ -177,24 +234,32 @@ export const AppInstallTaskScreen: React.FC = () => {
       }
       return null;
     },
-    [taskId, hasOpenedStore, mapServerStatusToDisplay, stopPolling, task]
+    [taskId, mapServerStatusToDisplay, stopPolling]
   );
 
   /**
    * Initializes task data and current assignment status.
    */
   const initScreen = useCallback(async () => {
+    console.log('[DEBUG-APPTASK] initScreen started. taskId:', taskId);
     setIsLoading(true);
     setInitError(null);
 
-    try {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('App discovery loading timed out. Please check your connection.')), 10000)
+    );
+
+    const initWorker = async () => {
       // 1. Authoritatively fetch assignment status and task metadata
+      console.log('[DEBUG-APPTASK] Step 1: calling checkStatus...');
       const statusData = await checkStatus(true);
+      console.log('[DEBUG-APPTASK] Step 1 complete. statusData:', JSON.stringify(statusData));
 
       let resolvedTask: TaskFeedItem | null = null;
 
       // Prefer server-returned task detail from status endpoint (survives global cap exhaustion)
       if (statusData?.task) {
+        console.log('[DEBUG-APPTASK] Using server-returned task from status endpoint');
         resolvedTask = {
           id: statusData.task.id,
           campaignName: statusData.task.campaignName || 'Partner Advertiser',
@@ -212,7 +277,9 @@ export const AppInstallTaskScreen: React.FC = () => {
         };
       } else {
         // Fallback to active feed
+        console.log('[DEBUG-APPTASK] Fallback: fetching getTaskFeedApi...');
         const feedRes = await getTaskFeedApi();
+        console.log('[DEBUG-APPTASK] getTaskFeedApi response received, task count:', feedRes.data?.tasks?.length);
         if (feedRes.success && feedRes.data?.tasks) {
           const found = feedRes.data.tasks.find((t) => t.id === taskId);
           if (found) {
@@ -225,23 +292,78 @@ export const AppInstallTaskScreen: React.FC = () => {
         throw new Error('This app discovery task is no longer available');
       }
 
+      console.log('[DEBUG-APPTASK] resolvedTask found:', resolvedTask.title);
+      taskRef.current = resolvedTask;
       setTask(resolvedTask);
 
-      // Restore server-authoritative store-visit state
+      // Restore server-authoritative store-visit and baseline state
       const serverOpenedStore = Boolean(statusData?.assignment?.hasOpenedStore);
       if (serverOpenedStore) {
+        hasOpenedStoreRef.current = true;
         setHasOpenedStore(true);
       }
 
-      if (statusData) {
+      if (statusData?.assignment?.initialInstallStatus) {
+        initialInstallStatusRef.current = statusData.assignment.initialInstallStatus;
+        setInitialInstallStatus(statusData.assignment.initialInstallStatus);
+        if (statusData.assignment.initialInstallStatus === 'INSTALLED') {
+          setWasPreinstalled(true);
+        }
+      }
+
+      if (statusData?.status === 'COMPLETED') {
+        setDisplayStatus('VERIFIED');
+        if (resolvedTask?.rewardPoints) {
+          setVerifiedPoints(resolvedTask.rewardPoints);
+        }
+      } else if (statusData) {
         const mapped = mapServerStatusToDisplay(statusData, serverOpenedStore);
         setDisplayStatus(mapped);
       }
+
+      // Check initial installation state baseline if not already established
+      if (resolvedTask.appInstallConfig?.packageName) {
+        const pkg = resolvedTask.appInstallConfig.packageName;
+        console.log('[DEBUG-APPTASK] Checking package installation for:', pkg);
+        if (isValidAndroidPackageName(pkg)) {
+          try {
+            const res = await checkPackageInstallation(pkg);
+            console.log('[DEBUG-APPTASK] checkPackageInstallation result:', JSON.stringify(res));
+            if (isComponentMountedRef.current) {
+              if (initialInstallStatusRef.current === null) {
+                initialInstallStatusRef.current = res.status;
+                setInitialInstallStatus(res.status);
+                if (res.status === 'INSTALLED') {
+                  setWasPreinstalled(true);
+                }
+              }
+              currentInstallStatusRef.current = res.status;
+              setCurrentInstallStatus(res.status);
+              setInstallCheckMessage(res.message || null);
+            }
+          } catch (pkgErr: any) {
+            console.warn('[DEBUG-APPTASK] checkPackageInstallation initial check caught:', pkgErr);
+            if (isComponentMountedRef.current) {
+              initialInstallStatusRef.current = 'UNAVAILABLE';
+              setInitialInstallStatus('UNAVAILABLE');
+              currentInstallStatusRef.current = 'UNAVAILABLE';
+              setCurrentInstallStatus('UNAVAILABLE');
+              setInstallCheckMessage(pkgErr?.message || 'Package check unavailable');
+            }
+          }
+        }
+      }
+    };
+
+    try {
+      await Promise.race([initWorker(), timeoutPromise]);
     } catch (err: any) {
+      console.error('[DEBUG-APPTASK] initScreen catch error:', err?.message, err?.stack);
       if (isComponentMountedRef.current) {
         setInitError(err.message || 'Failed to load app discovery task');
       }
     } finally {
+      console.log('[DEBUG-APPTASK] initScreen finally block reached. isMounted:', isComponentMountedRef.current);
       if (isComponentMountedRef.current) {
         setIsLoading(false);
       }
@@ -258,6 +380,135 @@ export const AppInstallTaskScreen: React.FC = () => {
       stopPolling();
     };
   }, [initScreen, stopPolling]);
+
+  /**
+   * Performs scoped package presence check via Android PackageManager.
+   * On genuine fresh installation (NOT_INSTALLED -> INSTALLED), automatically verifies reward.
+   */
+  const runInstallationCheck = useCallback(
+    async (targetPackage?: string) => {
+      const activeTask = taskRef.current;
+      const pkg = targetPackage || activeTask?.appInstallConfig?.packageName;
+      if (!pkg || !isValidAndroidPackageName(pkg) || isCheckingInstallRef.current) return;
+
+      // Reject stale checks from other tasks
+      if (activeTask?.appInstallConfig?.packageName && pkg !== activeTask.appInstallConfig.packageName) {
+        console.warn('[APPTASK] Discarding stale check for mismatched package:', pkg);
+        return;
+      }
+
+      isCheckingInstallRef.current = true;
+      setCurrentInstallStatus('CHECKING');
+
+      try {
+        const res = await checkPackageInstallation(pkg);
+        if (!isComponentMountedRef.current) return;
+
+        setCurrentInstallStatus(res.status);
+        currentInstallStatusRef.current = res.status;
+        setInstallCheckMessage(res.message || null);
+
+        // Record initial state if this was the very first check
+        if (initialInstallStatusRef.current === null) {
+          initialInstallStatusRef.current = res.status;
+          setInitialInstallStatus(res.status);
+          if (res.status === 'INSTALLED') {
+            setWasPreinstalled(true);
+          }
+        }
+
+        // Automatic completion trigger for INSTALL_ONLY tasks:
+        // Initial was NOT_INSTALLED and return result is INSTALLED
+        const isInstallOnly =
+          activeTask?.appInstallConfig?.conversionEvent === 'INSTALL_ONLY' ||
+          activeTask?.appInstallConfig?.conversionEvent === 'INSTALL' ||
+          activeTask?.appInstallConfig?.attributionMethod === 'CLIENT_PACKAGE_PRESENCE';
+
+        if (
+          isInstallOnly &&
+          res.status === 'INSTALLED' &&
+          initialInstallStatusRef.current === 'NOT_INSTALLED' &&
+          hasOpenedStoreRef.current &&
+          !isVerifyingRef.current &&
+          displayStatus !== 'VERIFIED'
+        ) {
+          isVerifyingRef.current = true;
+          setIsVerifyingReward(true);
+          try {
+            console.log('[APPTASK] Auto-verifying fresh app installation for:', pkg);
+            const compRes = await verifyAppInstallApi(taskId, { packageName: pkg });
+            if (compRes.success && isComponentMountedRef.current) {
+              setDisplayStatus('VERIFIED');
+              const points = compRes.data.rewardPoints || activeTask?.rewardPoints || 0;
+              setVerifiedPoints(points);
+              setVerifySuccessMessage(compRes.data.message || `+${points} promotional points credited!`);
+              stopPolling();
+              getTaskSummaryApi().catch(() => {});
+              Alert.alert(
+                '🎉 App Installed & Verified!',
+                `+${points} Promotional Points have been credited to your balance.`,
+                [{ text: 'Awesome!', onPress: () => {} }]
+              );
+            }
+          } catch (compErr: any) {
+            console.error('[APPTASK] verifyAppInstallApi error:', compErr);
+            if (compErr?.code === 'PREINSTALLED_APP') {
+              setWasPreinstalled(true);
+            } else if (compErr?.code === 'TASK_ALREADY_COMPLETED') {
+              setDisplayStatus('VERIFIED');
+            } else {
+              Alert.alert('Verification Notice', compErr?.message || 'Could not verify installation with server');
+            }
+          } finally {
+            if (isComponentMountedRef.current) {
+              setIsVerifyingReward(false);
+            }
+            isVerifyingRef.current = false;
+          }
+        }
+      } catch (err: any) {
+        if (isComponentMountedRef.current) {
+          setCurrentInstallStatus('UNAVAILABLE');
+          currentInstallStatusRef.current = 'UNAVAILABLE';
+          setInstallCheckMessage(err?.message || 'Installation verification requires the test APK');
+        }
+      } finally {
+        isCheckingInstallRef.current = false;
+      }
+    },
+    [taskId, displayStatus, stopPolling]
+  );
+
+  // Foreground listener: automatically check installation on return from store
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (prevState === 'active' && (nextState === 'background' || nextState === 'inactive')) {
+        hasBackgroundedRef.current = true;
+      } else if (
+        (prevState === 'background' || prevState === 'inactive') &&
+        nextState === 'active' &&
+        hasBackgroundedRef.current
+      ) {
+        hasBackgroundedRef.current = false;
+        const currentTask = taskRef.current;
+        if (
+          hasOpenedStoreRef.current &&
+          currentTask?.appInstallConfig?.packageName &&
+          displayStatus !== 'VERIFIED' &&
+          !isVerifyingRef.current
+        ) {
+          runInstallationCheck(currentTask.appInstallConfig.packageName);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [displayStatus, runInstallationCheck]);
 
   // Polling management: runs only when focused, in pending verification, and bounded
   useEffect(() => {
@@ -291,87 +542,177 @@ export const AppInstallTaskScreen: React.FC = () => {
   }, [isFocused, displayStatus, checkStatus, stopPolling]);
 
   /**
+   * Opens installed app using Android PackageManager launch intent.
+   */
+  const handleOpenApp = async () => {
+    const pkg = task?.appInstallConfig?.packageName;
+    if (!pkg || isActionInFlightRef.current) return;
+    isActionInFlightRef.current = true;
+    setIsOpeningApp(true);
+    try {
+      const success = await openInstalledPackage(pkg);
+      if (!success) {
+        Alert.alert('Notice', 'Unable to launch this application automatically. You can launch it from your home screen.');
+      }
+    } finally {
+      setIsOpeningApp(false);
+      isActionInFlightRef.current = false;
+    }
+  };
+
+  /**
    * Safely launches the official Google Play Store listing.
-   * Never sideloads, never opens unverified APKs, never claims client-side install proof.
+   * Checks baseline installation state first, persists initial baseline on backend,
+   * then opens native market intent with HTTPS fallback.
    */
   const handleOpenStore = async () => {
+    if (isActionInFlightRef.current || isLaunchingStore) return;
+
     const packageName = task?.appInstallConfig?.packageName;
     if (!packageName || !isValidAndroidPackageName(packageName)) {
       Alert.alert('Configuration Notice', 'The Android package identifier for this task is invalid.');
       return;
     }
 
-    // 1. If not started yet, claim assignment first
-    if (displayStatus === 'NOT_STARTED') {
-      try {
-        const startRes = await startTaskApi(taskId);
-        if (startRes.success && startRes.data?.assignment) {
-          // Status becomes IN_PROGRESS
-          setDisplayStatus('IN_PROGRESS');
-        }
-      } catch (err: any) {
-        // If already active or duplicate, proceed to store launch
-      }
+    // If pre-installed, reject launching store for new-install rewards
+    if (wasPreinstalled || initialInstallStatusRef.current === 'INSTALLED') {
+      Alert.alert(
+        'Already Installed',
+        'Already installed — new-install reward unavailable. Promotional rewards are exclusively for fresh app discoveries.',
+        [
+          { text: 'Open App', onPress: handleOpenApp },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+      return;
     }
 
-    const marketUri = buildMarketIntentUri(packageName);
-    const canonicalWebUrl = buildCanonicalPlayStoreUrl(packageName);
-    const configuredStoreUrl = task?.appInstallConfig?.storeUrl;
+    isActionInFlightRef.current = true;
+    setIsLaunchingStore(true);
 
-    // Validate configured URL or fallback to canonical
-    let targetWebUrl = canonicalWebUrl;
-    if (configuredStoreUrl && isValidPlayStoreUrl(configuredStoreUrl, packageName)) {
-      targetWebUrl = configuredStoreUrl;
-    }
-
-    let opened = false;
-
-    // 2. Attempt native Market Intent (Google Play app)
     try {
-      const canOpenMarket = await Linking.canOpenURL(marketUri);
-      if (canOpenMarket) {
-        await Linking.openURL(marketUri);
-        opened = true;
+      // 1. Establish baseline initial installation state before opening Store
+      let baselineStatus: InstallationStatus | null = initialInstallStatusRef.current;
+      if (baselineStatus === null) {
+        const initRes = await checkPackageInstallation(packageName);
+        baselineStatus = initRes.status;
+        initialInstallStatusRef.current = initRes.status;
+        setInitialInstallStatus(initRes.status);
+        setCurrentInstallStatus(initRes.status);
+        setInstallCheckMessage(initRes.message || null);
       }
-    } catch {
-      // Intent launch failed, fallback to browser
-    }
 
-    // 3. Fallback to official web Play Store URL
-    if (!opened) {
-      try {
-        const canOpenWeb = await Linking.canOpenURL(targetWebUrl);
-        if (canOpenWeb) {
-          await Linking.openURL(targetWebUrl);
-          opened = true;
-        } else {
-          Alert.alert('Store Unavailable', 'Unable to open Google Play Store on this device.');
-          return;
-        }
-      } catch (err: any) {
-        Alert.alert('Store Launch Error', err.message || 'Failed to open Google Play Store');
+      if (baselineStatus === 'INSTALLED') {
+        setWasPreinstalled(true);
+        Alert.alert(
+          'Already Installed',
+          'Already installed — new-install reward unavailable. Promotional rewards are exclusively for fresh discoveries.',
+          [
+            { text: 'Open App', onPress: handleOpenApp },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
         return;
       }
-    }
 
-    if (opened) {
-      setHasOpenedStore(true);
-      setDisplayStatus('PENDING_PARTNER_VERIFICATION');
+      if (baselineStatus === 'UNAVAILABLE') {
+        Alert.alert(
+          'Verification Unavailable',
+          installCheckMessage || 'Scoped package verification is unavailable for this package/device. Please retry.',
+          [{ text: 'Retry', onPress: () => runInstallationCheck() }, { text: 'Cancel', style: 'cancel' }]
+        );
+        return;
+      }
 
-      // Authoritative server-side tracking (not reward evidence)
-      recordStoreVisitApi(taskId).catch((err: any) => {
-        // Non-blocking telemetry tracking
-        console.warn('Store visit record note:', err.message);
-      });
+      if (baselineStatus !== 'NOT_INSTALLED') {
+        Alert.alert('Verification Notice', 'Unable to confirm initial installation state. Please retry.');
+        return;
+      }
+
+      // 2. Persist target package initial check baseline to backend before opening Play Store
+      try {
+        const visitRes = await recordStoreVisitApi(taskId, {
+          initialInstallStatus: 'NOT_INSTALLED',
+          packageName,
+        });
+        if (visitRes.success) {
+          hasOpenedStoreRef.current = true;
+          setHasOpenedStore(true);
+          setDisplayStatus('IN_PROGRESS');
+        }
+      } catch (visitErr: any) {
+        console.warn('[APPTASK] Failed to persist initial baseline to backend:', visitErr.message);
+        if (visitErr.code === 'DAILY_CAP_REACHED' || visitErr.code === 'TASK_EXPIRED') {
+          Alert.alert('Task Notice', visitErr.message || 'Task is no longer available');
+          return;
+        }
+      }
+
+      const marketUri = buildMarketIntentUri(packageName);
+      const canonicalWebUrl = buildCanonicalPlayStoreUrl(packageName);
+      const configuredStoreUrl = task?.appInstallConfig?.storeUrl;
+
+      // Validate configured URL or fallback to canonical
+      let targetWebUrl = canonicalWebUrl;
+      if (configuredStoreUrl && isValidPlayStoreUrl(configuredStoreUrl, packageName)) {
+        targetWebUrl = configuredStoreUrl;
+      }
+
+      let opened = false;
+      hasBackgroundedRef.current = false;
+
+      // 3. Attempt native Market Intent (Google Play app)
+      try {
+        const canOpenMarket = await Linking.canOpenURL(marketUri);
+        if (canOpenMarket) {
+          await Linking.openURL(marketUri);
+          opened = true;
+        }
+      } catch {
+        // Intent launch failed, fallback to browser
+      }
+
+      // 4. Fallback to official web Play Store URL
+      if (!opened) {
+        try {
+          const canOpenWeb = await Linking.canOpenURL(targetWebUrl);
+          if (canOpenWeb) {
+            await Linking.openURL(targetWebUrl);
+            opened = true;
+          } else {
+            Alert.alert('Store Unavailable', 'Unable to open Google Play Store on this device.');
+            return;
+          }
+        } catch (err: any) {
+          Alert.alert('Store Launch Error', err.message || 'Failed to open Google Play Store');
+          return;
+        }
+      }
+
+      if (opened) {
+        hasOpenedStoreRef.current = true;
+        setHasOpenedStore(true);
+      }
+    } finally {
+      setIsLaunchingStore(false);
+      isActionInFlightRef.current = false;
     }
   };
+
+  const isInstallOnly = Boolean(
+    task?.appInstallConfig?.conversionEvent === 'INSTALL_ONLY' ||
+      task?.appInstallConfig?.conversionEvent === 'INSTALL' ||
+      task?.appInstallConfig?.attributionMethod === 'CLIENT_PACKAGE_PRESENCE'
+  );
 
   const getStatusBadgeConfig = (): { label: string; variant: 'verified' | 'pending' | 'cyan' | 'rejected' | 'neutral' } => {
     switch (displayStatus) {
       case 'VERIFIED':
         return { label: 'VERIFIED & REWARDED', variant: 'verified' };
       case 'PENDING_PARTNER_VERIFICATION':
-        return { label: 'PENDING PARTNER VERIFICATION', variant: 'pending' };
+        return isInstallOnly
+          ? { label: 'STORE OPENED', variant: 'cyan' }
+          : { label: 'PENDING PARTNER VERIFICATION', variant: 'pending' };
       case 'IN_PROGRESS':
         return { label: 'ASSIGNMENT ACTIVE', variant: 'cyan' };
       case 'EXPIRED':
@@ -399,19 +740,30 @@ export const AppInstallTaskScreen: React.FC = () => {
         <View style={styles.centerContainer}>
           <Text style={styles.errorTitle}>App Discovery Notice</Text>
           <Text style={styles.errorText}>{initError || 'This task is currently unavailable.'}</Text>
-          <Button
-            title="Return to Earn Hub"
-            onPress={() => navigation.goBack()}
-            variant="outline"
-            style={styles.errorButton}
-          />
+          <View style={{ flexDirection: 'column', gap: 12, width: '100%', maxWidth: 260 }}>
+            <Button
+              title="Try Again"
+              onPress={() => initScreen()}
+              variant="primary"
+            />
+            <Button
+              title="Return to Earn Hub"
+              onPress={() => navigation.goBack()}
+              variant="outline"
+            />
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
   const badgeConfig = getStatusBadgeConfig();
-  const conversionRequirement = task.appInstallConfig?.conversionEvent || 'FIRST_OPEN';
+  const conversionRequirement = isInstallOnly
+    ? 'App Installation'
+    : task.appInstallConfig?.conversionEvent || 'FIRST_OPEN';
+  const verificationMethodDisplay = isInstallOnly
+    ? 'Device Package Presence'
+    : 'Partner S2S Postback';
   const packageName = task.appInstallConfig?.packageName || 'Unavailable';
   const appName = task.appInstallConfig?.appName || task.title;
   const isSyntheticTest = Boolean(
@@ -462,8 +814,8 @@ export const AppInstallTaskScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* Synthetic QA Mode Clarity Notice */}
-        {isSyntheticTest ? (
+        {/* Synthetic QA Mode Clarity Notice (Only for synthetic postback tasks, NOT for INSTALL_ONLY) */}
+        {!isInstallOnly && isSyntheticTest ? (
           <View style={styles.syntheticNoticeCard}>
             <View style={styles.syntheticHeaderRow}>
               <Badge label="SYNTHETIC TEST — NOT A VERIFIED INSTALL" variant="rejected" />
@@ -519,8 +871,111 @@ export const AppInstallTaskScreen: React.FC = () => {
             </View>
             <View style={styles.specItem}>
               <Text style={styles.specTitle}>Verification</Text>
-              <Text style={styles.specValue}>Partner S2S Postback</Text>
+              <Text style={styles.specValue}>{verificationMethodDisplay}</Text>
             </View>
+          </View>
+        </View>
+
+        {/* Scoped Android Package Installation Check Card */}
+        <View style={styles.installCard}>
+          <View style={styles.installHeaderRow}>
+            <Text style={styles.installSectionTitle}>Device Package Presence</Text>
+            {isVerifyingReward || currentInstallStatus === 'CHECKING' ? (
+              <Badge label="CHECKING…" variant="cyan" />
+            ) : wasPreinstalled || (initialInstallStatus === 'INSTALLED' && displayStatus !== 'VERIFIED') ? (
+              <Badge label="ALREADY INSTALLED" variant="rejected" />
+            ) : displayStatus === 'VERIFIED' || currentInstallStatus === 'INSTALLED' ? (
+              <Badge label="INSTALLED" variant="active" />
+            ) : currentInstallStatus === 'NOT_INSTALLED' ? (
+              <Badge label="NOT INSTALLED" variant="pending" />
+            ) : (
+              <Badge label="VERIFICATION UNAVAILABLE" variant="neutral" />
+            )}
+          </View>
+          <View style={styles.installBody}>
+            {isVerifyingReward ? (
+              <View style={styles.installStatusRow}>
+                <ActivityIndicator size="small" color={THEME.colors.emerald} />
+                <Text style={styles.installText}>Verifying installation and crediting reward…</Text>
+              </View>
+            ) : currentInstallStatus === 'CHECKING' ? (
+              <View style={styles.installStatusRow}>
+                <ActivityIndicator size="small" color={THEME.colors.cyan} />
+                <Text style={styles.installText}>Checking scoped package presence for {packageName}…</Text>
+              </View>
+            ) : wasPreinstalled || (initialInstallStatus === 'INSTALLED' && displayStatus !== 'VERIFIED') ? (
+              <View>
+                <Text style={styles.installHeading}>⚠️ Already Installed</Text>
+                <Text style={styles.installText}>
+                  Already installed — new-install reward unavailable. Promotional rewards are exclusively available for fresh app discoveries and first-time installations on this device.
+                </Text>
+                <TouchableOpacity
+                  style={styles.openAppButtonInline}
+                  onPress={handleOpenApp}
+                  disabled={isOpeningApp}
+                >
+                  {isOpeningApp ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.openAppButtonInlineText}>Open App ↗</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : displayStatus === 'VERIFIED' ? (
+              <View>
+                <Text style={styles.installHeading}>✓ App Present & Rewarded</Text>
+                <Text style={styles.installText}>
+                  Package {packageName} is verified on this device. +{verifiedPoints || task.rewardPoints} Promotional PTS credited!
+                </Text>
+                <TouchableOpacity
+                  style={styles.openAppButtonInline}
+                  onPress={handleOpenApp}
+                  disabled={isOpeningApp}
+                >
+                  {isOpeningApp ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.openAppButtonInlineText}>Open App ↗</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : currentInstallStatus === 'INSTALLED' ? (
+              <View>
+                <Text style={styles.installHeading}>✓ App Present on Device</Text>
+                <Text style={styles.installText}>
+                  Package {packageName} is detected on this device.
+                </Text>
+                <TouchableOpacity
+                  style={styles.openAppButtonInline}
+                  onPress={handleOpenApp}
+                  disabled={isOpeningApp}
+                >
+                  {isOpeningApp ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.openAppButtonInlineText}>Open App ↗</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : currentInstallStatus === 'NOT_INSTALLED' ? (
+              <View>
+                <Text style={styles.installHeading}>Not Installed</Text>
+                <Text style={styles.installText}>
+                  Package {packageName} was not detected on this device. Tap "Install App" below to visit the official Google Play listing.
+                </Text>
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.installHeading}>Verification Unavailable</Text>
+                <Text style={styles.installText}>
+                  {installCheckMessage || 'Installation verification requires the test APK with scoped package queries.'}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.installDisclaimer}>
+              Client-reported package presence is not proof of Play Store source, fresh acquisition, registration, cart activity, or purchase. Pre-installed apps and unverified states do not auto-credit rewards.
+            </Text>
           </View>
         </View>
 
@@ -533,18 +988,26 @@ export const AppInstallTaskScreen: React.FC = () => {
 
           {displayStatus === 'VERIFIED' ? (
             <View style={styles.verifiedBox}>
-              <Text style={styles.verifiedTitle}>
-                {isSyntheticTest ? '🧪 Synthetic QA Conversion Verified' : '🎉 Conversion Verified!'}
-              </Text>
+              <Text style={styles.verifiedTitle}>🎉 Installation Verified & Rewarded!</Text>
               <Text style={styles.verifiedText}>
-                {isSyntheticTest
-                  ? `Simulated QA postback has been verified by the test engine. +${
-                      verifiedPoints ?? task.rewardPoints
-                    } Promotional PTS awarded to your internal test balance.`
-                  : `The partner postback has been cryptographically verified. +${
-                      verifiedPoints ?? task.rewardPoints
-                    } Promotional PTS have been awarded to your account.`}
+                {verifySuccessMessage ||
+                  `Package presence has been verified on this device. +${
+                    verifiedPoints ?? task.rewardPoints
+                  } Promotional PTS have been awarded to your account.`}
               </Text>
+            </View>
+          ) : isInstallOnly && hasOpenedStore ? (
+            <View style={styles.pendingBox}>
+              <ActivityIndicator size="small" color={THEME.colors.cyan} style={styles.pendingSpinner} />
+              <View style={styles.pendingTextContainer}>
+                <Text style={styles.pendingTitle}>Store Listing Opened</Text>
+                <Text style={styles.pendingText}>
+                  Please complete installation from Google Play. When you return to AdPayOn, installation is automatically verified.
+                </Text>
+                <Text style={styles.pendingSubtext}>
+                  Scoped check verifies presence of {packageName} without accessing personal data.
+                </Text>
+              </View>
             </View>
           ) : displayStatus === 'PENDING_PARTNER_VERIFICATION' ? (
             <View style={styles.pendingBox}>
@@ -577,8 +1040,8 @@ export const AppInstallTaskScreen: React.FC = () => {
           )}
         </View>
 
-        {/* In-App Feedback & Verification Card */}
-        {displayStatus !== 'VERIFIED' && displayStatus !== 'EXPIRED' && (
+        {/* In-App Feedback & Verification Card (Only for non-install-only feedback tasks) */}
+        {!isInstallOnly && displayStatus !== 'VERIFIED' && displayStatus !== 'EXPIRED' && (
           <View style={styles.feedbackCard}>
             <View style={styles.feedbackCardHeader}>
               <Text style={styles.feedbackCardTitle}>📝 Testing Feedback</Text>
@@ -620,6 +1083,21 @@ export const AppInstallTaskScreen: React.FC = () => {
               textAlignVertical="top"
             />
 
+            {/* Optional Partner Completion Code */}
+            {task?.appInstallConfig?.completionCode ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={[styles.sectionLabel, { marginBottom: 6 }]}>Partner Completion Code *</Text>
+                <TextInput
+                  style={[styles.feedbackInput, { height: 44, textAlignVertical: 'center' }]}
+                  placeholder="Enter partner completion code"
+                  placeholderTextColor={THEME.colors.textMuted}
+                  value={completionCodeInput}
+                  onChangeText={setCompletionCodeInput}
+                  autoCapitalize="characters"
+                />
+              </View>
+            ) : null}
+
             <Button
               title={
                 isSubmittingFeedback
@@ -639,13 +1117,13 @@ export const AppInstallTaskScreen: React.FC = () => {
         <View style={styles.safetyCard}>
           <Text style={styles.safetyHeader}>🛡️ Attribution & Privacy Notice</Text>
           <Text style={styles.safetyItem}>
-            • <Text style={styles.boldText}>No Automatic Points:</Text> Opening Google Play or installing the app alone does not award points.
+            • <Text style={styles.boldText}>No Automatic Points:</Text> Opening Google Play alone does not award points.
           </Text>
           <Text style={styles.safetyItem}>
             • <Text style={styles.boldText}>Official Store Only:</Text> AdPayOn links strictly to official Google Play listings and never distributes APKs or sideloaded files.
           </Text>
           <Text style={styles.safetyItem}>
-            • <Text style={styles.boldText}>Privacy Protection:</Text> AdPayOn does not scan, monitor, or query apps installed on your device.
+            • <Text style={styles.boldText}>Scoped Verification Only:</Text> AdPayOn checks only whether the specific sponsored app package was installed using Android PackageManager. We never scan your storage, access Accessibility, or query other installed apps.
           </Text>
           <Text style={styles.safetyItem}>
             • <Text style={styles.boldText}>Optional Choice:</Text> You are never obligated to install. Reward points are non-withdrawable promotional points.
@@ -655,12 +1133,37 @@ export const AppInstallTaskScreen: React.FC = () => {
         {/* Action Button Container */}
         <View style={styles.actionContainer}>
           {displayStatus === 'VERIFIED' ? (
-            <Button
-              title="Return to Earn Hub ✓"
-              onPress={() => navigation.goBack()}
-              variant="primary"
-              style={styles.primaryActionButton}
-            />
+            <>
+              <Button
+                title="Open App ↗"
+                onPress={handleOpenApp}
+                variant="primary"
+                isLoading={isOpeningApp}
+                style={styles.primaryActionButton}
+              />
+              <Button
+                title="Return to Earn Hub"
+                onPress={() => navigation.goBack()}
+                variant="outline"
+                style={styles.secondaryActionButton}
+              />
+            </>
+          ) : wasPreinstalled || initialInstallStatus === 'INSTALLED' ? (
+            <>
+              <Button
+                title="Open App ↗"
+                onPress={handleOpenApp}
+                variant="primary"
+                isLoading={isOpeningApp}
+                style={styles.primaryActionButton}
+              />
+              <Button
+                title="Return to Earn Hub"
+                onPress={() => navigation.goBack()}
+                variant="outline"
+                style={styles.secondaryActionButton}
+              />
+            </>
           ) : displayStatus === 'EXPIRED' ? (
             <Button
               title="Return to Earn Hub"
@@ -668,23 +1171,86 @@ export const AppInstallTaskScreen: React.FC = () => {
               variant="outline"
               style={styles.primaryActionButton}
             />
-          ) : (
+          ) : isVerifyingReward ? (
+            <Button
+              title="Verifying Installation Reward…"
+              onPress={() => {}}
+              disabled
+              isLoading
+              variant="primary"
+              style={styles.primaryActionButton}
+            />
+          ) : currentInstallStatus === 'UNAVAILABLE' ? (
             <>
               <Button
-                title={
-                  displayStatus === 'PENDING_PARTNER_VERIFICATION'
-                    ? 'View on Google Play Again ↗'
-                    : 'View on Google Play ↗'
-                }
-                onPress={handleOpenStore}
+                title="Retry Verification 🔄"
+                onPress={() => runInstallationCheck()}
                 variant="primary"
+                isLoading={isCheckingInstallRef.current}
                 style={styles.primaryActionButton}
               />
               <Button
-                title="Check Verification Status 🔄"
-                onPress={() => checkStatus(false)}
+                title="Return to Earn Hub"
+                onPress={() => navigation.goBack()}
                 variant="outline"
-                isLoading={isRefreshingStatus}
+                style={styles.secondaryActionButton}
+              />
+            </>
+          ) : isInstallOnly ? (
+            <>
+              <Button
+                title="Install App (Google Play) ↗"
+                onPress={handleOpenStore}
+                variant="primary"
+                isLoading={isLaunchingStore}
+                style={styles.primaryActionButton}
+              />
+              {hasOpenedStore && (
+                <Button
+                  title={currentInstallStatus === 'CHECKING' ? 'Checking Installation…' : 'Check Installation & Sync 🔄'}
+                  onPress={() => runInstallationCheck()}
+                  variant="outline"
+                  isLoading={currentInstallStatus === 'CHECKING' || isRefreshingStatus}
+                  style={styles.secondaryActionButton}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              {currentInstallStatus === 'INSTALLED' ? (
+                <Button
+                  title="Open App ↗"
+                  onPress={handleOpenApp}
+                  variant="primary"
+                  isLoading={isOpeningApp}
+                  style={styles.primaryActionButton}
+                />
+              ) : (
+                <Button
+                  title="Install App (Google Play) ↗"
+                  onPress={handleOpenStore}
+                  variant="primary"
+                  isLoading={isLaunchingStore}
+                  style={styles.primaryActionButton}
+                />
+              )}
+              {currentInstallStatus === 'INSTALLED' && (
+                <Button
+                  title="View on Google Play ↗"
+                  onPress={handleOpenStore}
+                  variant="outline"
+                  isLoading={isLaunchingStore}
+                  style={styles.secondaryActionButton}
+                />
+              )}
+              <Button
+                title={currentInstallStatus === 'CHECKING' ? 'Checking Installation…' : 'Check Installation & Sync 🔄'}
+                onPress={() => {
+                  runInstallationCheck();
+                  checkStatus(false);
+                }}
+                variant="outline"
+                isLoading={currentInstallStatus === 'CHECKING' || isRefreshingStatus}
                 style={styles.secondaryActionButton}
               />
             </>
@@ -1120,5 +1686,65 @@ const styles = StyleSheet.create({
   },
   secondaryActionButton: {
     width: '100%',
+  },
+  installCard: {
+    backgroundColor: THEME.colors.surface,
+    borderColor: THEME.colors.border,
+    borderWidth: 1,
+    borderRadius: THEME.borderRadius.lg,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+  },
+  installHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: THEME.spacing.md,
+  },
+  installSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  installBody: {
+    gap: THEME.spacing.sm,
+  },
+  installStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+  },
+  installHeading: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: THEME.colors.textPrimary,
+    marginBottom: 4,
+  },
+  installText: {
+    fontSize: 13,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+  },
+  openAppButtonInline: {
+    marginTop: THEME.spacing.sm,
+    backgroundColor: THEME.colors.emerald,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: THEME.borderRadius.md,
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  openAppButtonInlineText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  installDisclaimer: {
+    marginTop: THEME.spacing.xs,
+    fontSize: 11,
+    color: THEME.colors.textMuted,
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
 });

@@ -3,6 +3,7 @@ import { DevOtpProvider, devOtpProvider } from './devOtpProvider';
 import { Msg91SmsProvider } from './msg91SmsProvider';
 import { MockSmsProvider, mockSmsProvider } from './mockSmsProvider';
 import { StagingManualOtpProvider } from './stagingManualOtpProvider';
+import { TerminalOtpProvider } from './terminalOtpProvider';
 import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 
@@ -11,6 +12,7 @@ export * from './devOtpProvider';
 export * from './msg91SmsProvider';
 export * from './mockSmsProvider';
 export * from './stagingManualOtpProvider';
+export * from './terminalOtpProvider';
 
 class FailClosedSmsProvider implements ISmsProvider {
   public readonly name = 'FailClosedSmsProvider';
@@ -47,6 +49,7 @@ const failClosedProvider = new FailClosedSmsProvider();
 
 let testProviderOverride: ISmsProvider | null = null;
 let stagingManualInstance: StagingManualOtpProvider | null = null;
+let terminalOtpInstance: TerminalOtpProvider | null = null;
 let msg91Instance: Msg91SmsProvider | null = null;
 
 /**
@@ -55,6 +58,21 @@ let msg91Instance: Msg91SmsProvider | null = null;
 export function getSmsProvider(): ISmsProvider {
   if (testProviderOverride) {
     return testProviderOverride;
+  }
+
+  if (env.TERMINAL_OTP_ENABLED) {
+    if (!terminalOtpInstance) {
+      const allowlist = (env.TERMINAL_OTP_ALLOWLIST_MOBILES || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      terminalOtpInstance = new TerminalOtpProvider({
+        enabled: true,
+        allowlistedMobiles: allowlist,
+      });
+    }
+    return terminalOtpInstance;
   }
 
   if (env.SMS_PROVIDER === 'mock') {

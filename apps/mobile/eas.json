@@ -17,8 +17,21 @@
         "EXPO_PUBLIC_DEMO_MODE": "true"
       }
     },
+    "sandbox": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "sandbox",
+        "EXPO_PUBLIC_DEMO_MODE": "false",
+        "EXPO_PUBLIC_API_URL": "http://127.0.0.1:5001/api"
+      }
+    },
     "client-staging": {
       "distribution": "internal",
+      "developmentClient": false,
       "android": {
         "buildType": "apk"
       },

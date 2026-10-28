@@ -7,7 +7,9 @@ export type TaskCategory =
   | 'MANUAL_VERIFY'
   | 'APP_INSTALL'
   | 'VIDEO_WATCH'
-  | 'ARTICLE_READ';
+  | 'ARTICLE_READ'
+  | 'YOUTUBE_LEARNING'
+  | 'APP_TESTING';
 export type VerificationMethod = 'FIRST_PARTY_ACTION' | 'AUTHENTICATED_WEBHOOK' | 'MANUAL_REVIEW';
 export type TaskStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'EXHAUSTED' | 'ARCHIVED';
 
@@ -16,10 +18,12 @@ export interface IAppInstallConfig {
   packageName: string;
   platform: 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
   storeUrl: string;
-  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK';
-  conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK' | 'PARTNER_CALLBACK' | 'USAGE_STATS' | 'CLIENT_PACKAGE_PRESENCE';
+  conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE' | 'INSTALL_ONLY';
   testingSteps?: string;
   feedbackQuestion?: string;
+  requiredTestingSeconds?: number;
+  completionCode?: string;
 }
 
 export type VideoCompletionPolicy = 'FULL_VIDEO' | 'MINIMUM_DURATION';
@@ -49,10 +53,22 @@ export interface IArticleReadConfig {
   comprehensionQuiz?: IArticleReadComprehensionQuiz;
 }
 
+export interface IYouTubeLearningConfig {
+  youtubeUrl: string;
+  videoId: string;
+  videoTitle?: string;
+  requiredDurationSeconds: number;
+  instructions?: string;
+  comprehensionQuiz?: IArticleReadComprehensionQuiz;
+  educationalNotice?: string;
+}
+
 export interface ITaskTargeting {
   minAncestryDepth?: number;
   kycRequired?: boolean;
   allowedStates?: string[];
+  assignedUserIds?: Types.ObjectId[];
+  userGroups?: string[];
 }
 
 export interface ITask extends Document {
@@ -74,6 +90,7 @@ export interface ITask extends Document {
   appInstallConfig?: IAppInstallConfig;
   videoWatchConfig?: IVideoWatchConfig;
   articleReadConfig?: IArticleReadConfig;
+  youtubeLearningConfig?: IYouTubeLearningConfig;
   expiresAt?: Date;
   createdBy: Types.ObjectId;
   createdAt: Date;
@@ -109,6 +126,8 @@ const taskSchema = new Schema<ITask>(
         'APP_INSTALL',
         'VIDEO_WATCH',
         'ARTICLE_READ',
+        'YOUTUBE_LEARNING',
+        'APP_TESTING',
       ],
       required: [true, 'Task category is required'],
     },
@@ -162,6 +181,8 @@ const taskSchema = new Schema<ITask>(
       minAncestryDepth: { type: Number, default: 0, min: 0 },
       kycRequired: { type: Boolean, default: false },
       allowedStates: { type: [String], default: [] },
+      assignedUserIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
+      userGroups: { type: [String], default: [] },
     },
     dwellTimeSeconds: {
       type: Number,
@@ -188,10 +209,36 @@ const taskSchema = new Schema<ITask>(
         packageName: { type: String, trim: true, maxlength: 150 },
         platform: { type: String, enum: ['ANDROID', 'IOS', 'CROSS_PLATFORM'] },
         storeUrl: { type: String, trim: true, maxlength: 500 },
-        attributionMethod: { type: String, enum: ['SIGNED_POSTBACK', 'MANUAL_REVIEW', 'IN_APP_FEEDBACK'] },
-        conversionEvent: { type: String, enum: ['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE'] },
+        attributionMethod: {
+          type: String,
+          enum: ['SIGNED_POSTBACK', 'MANUAL_REVIEW', 'IN_APP_FEEDBACK', 'PARTNER_CALLBACK', 'USAGE_STATS', 'CLIENT_PACKAGE_PRESENCE'],
+        },
+        conversionEvent: { type: String, enum: ['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE', 'INSTALL_ONLY'] },
         testingSteps: { type: String, trim: true, maxlength: 2000 },
         feedbackQuestion: { type: String, trim: true, maxlength: 500 },
+        requiredTestingSeconds: { type: Number, min: 0 },
+        completionCode: { type: String, trim: true, maxlength: 100 },
+      },
+      required: false,
+      _id: false,
+    },
+    youtubeLearningConfig: {
+      type: {
+        youtubeUrl: { type: String, trim: true, maxlength: 500 },
+        videoId: { type: String, trim: true, maxlength: 64 },
+        videoTitle: { type: String, trim: true, maxlength: 200 },
+        requiredDurationSeconds: { type: Number, min: 5 },
+        instructions: { type: String, trim: true, maxlength: 2000 },
+        educationalNotice: { type: String, trim: true, maxlength: 500 },
+        comprehensionQuiz: {
+          type: {
+            question: { type: String, trim: true, maxlength: 300 },
+            options: { type: [String] },
+            correctOptionIndex: { type: Number, min: 0 },
+          },
+          required: false,
+          _id: false,
+        },
       },
       required: false,
       _id: false,

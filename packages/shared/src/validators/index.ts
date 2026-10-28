@@ -165,6 +165,19 @@ export function isSafeContent(content: string): { valid: boolean; reason?: strin
 // Phase 10.2 Task Engine Configuration Schemas
 // ============================================================================
 
+export function extractYouTubeVideoId(url: string): { valid: boolean; videoId?: string; reason?: string } {
+  if (!url || typeof url !== 'string') {
+    return { valid: false, reason: 'URL must be a non-empty string' };
+  }
+  const cleanUrl = url.trim();
+  const pattern = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
+  const match = cleanUrl.match(pattern);
+  if (match && match[1]) {
+    return { valid: true, videoId: match[1] };
+  }
+  return { valid: false, reason: 'Invalid YouTube URL. Please provide a standard watch, share, embed, or shorts URL.' };
+}
+
 export const appInstallConfigSchema = z.object({
   appName: z.string().trim().min(2, 'App name must contain at least 2 characters').max(100, 'App name cannot exceed 100 characters'),
   packageName: z
@@ -173,7 +186,7 @@ export const appInstallConfigSchema = z.object({
     .min(3, 'Package name / Bundle ID must contain at least 3 characters')
     .max(150, 'Package name cannot exceed 150 characters')
     .regex(/^[a-zA-Z0-9._-]+$/, 'Package name contains invalid characters'),
-  platform: z.enum(['ANDROID', 'IOS', 'CROSS_PLATFORM']),
+  platform: z.enum(['ANDROID', 'IOS', 'CROSS_PLATFORM']).default('ANDROID'),
   storeUrl: z
     .string()
     .trim()
@@ -181,11 +194,15 @@ export const appInstallConfigSchema = z.object({
     .refine((val) => isSafePublicUrl(val).valid, {
       message: 'Store URL must be a valid, public HTTP/HTTPS URL',
     }),
-  attributionMethod: z.enum(['SIGNED_POSTBACK', 'MANUAL_REVIEW', 'IN_APP_FEEDBACK']),
-  conversionEvent: z.enum(['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE']),
+  attributionMethod: z.enum(['SIGNED_POSTBACK', 'MANUAL_REVIEW', 'IN_APP_FEEDBACK', 'PARTNER_CALLBACK', 'USAGE_STATS', 'CLIENT_PACKAGE_PRESENCE']).default('IN_APP_FEEDBACK'),
+  conversionEvent: z.enum(['INSTALL', 'FIRST_OPEN', 'REGISTER', 'IN_APP_PURCHASE', 'INSTALL_ONLY']).default('FIRST_OPEN'),
   testingSteps: z.string().trim().max(2000, 'Testing steps cannot exceed 2000 characters').optional(),
   feedbackQuestion: z.string().trim().max(500, 'Feedback question cannot exceed 500 characters').optional(),
+  requiredTestingSeconds: z.number().int().min(5).max(7200).optional().default(60),
+  completionCode: z.string().trim().max(100).optional(),
 });
+
+export const appTestingConfigSchema = appInstallConfigSchema;
 
 export const comprehensionQuizSchema = z
   .object({
@@ -244,6 +261,33 @@ export const videoWatchConfigSchema = z
     message: 'Required watch duration cannot exceed total video duration',
     path: ['requiredWatchSeconds'],
   });
+
+export const youtubeLearningConfigSchema = z.object({
+  youtubeUrl: z
+    .string()
+    .trim()
+    .max(500, 'YouTube URL cannot exceed 500 characters')
+    .refine((val) => extractYouTubeVideoId(val).valid, {
+      message: 'Must be a valid YouTube video URL (watch, embed, youtu.be, or shorts)',
+    }),
+  videoId: z.string().trim().min(11, 'Video ID must be 11 characters').max(64, 'Video ID cannot exceed 64 characters').optional(),
+  sessionDurationSeconds: z
+    .number()
+    .int('Session duration must be an integer')
+    .min(5, 'Session duration must be at least 5 seconds')
+    .max(7200, 'Session duration cannot exceed 7200 seconds')
+    .optional(),
+  requiredDurationSeconds: z
+    .number()
+    .int('Required duration must be an integer')
+    .min(5, 'Required duration must be at least 5 seconds')
+    .max(7200, 'Required duration cannot exceed 7200 seconds')
+    .optional(),
+  videoTitle: z.string().trim().max(200).optional(),
+  educationalNotice: z.string().trim().max(500).optional(),
+  instructions: z.string().trim().max(2000, 'Instructions cannot exceed 2000 characters').optional(),
+  comprehensionQuiz: comprehensionQuizSchema.optional(),
+});
 
 export const articleReadConfigSchema = z.object({
   articleTitle: z

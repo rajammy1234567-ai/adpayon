@@ -116,6 +116,8 @@ export interface TaskStatusResponse {
     isExpired?: boolean;
     hasOpenedStore?: boolean;
     storeVisitedAt?: string;
+    initialInstallStatus?: 'INSTALLED' | 'NOT_INSTALLED' | 'UNAVAILABLE';
+    initialPackageName?: string;
   };
 }
 
@@ -375,15 +377,22 @@ export async function getTaskStatusApi(taskId: string): Promise<{
 
 /**
  * POST /api/tasks/:id/store-visit
- * Authoritatively records official Google Play Store opening. Strictly tracking metadata, never reward verification.
+ * Authoritatively records official Google Play Store opening and initial package check baseline.
  */
-export async function recordStoreVisitApi(taskId: string): Promise<{
+export async function recordStoreVisitApi(
+  taskId: string,
+  payload?: {
+    initialInstallStatus?: 'INSTALLED' | 'NOT_INSTALLED' | 'UNAVAILABLE';
+    packageName?: string;
+  }
+): Promise<{
   success: boolean;
   message?: string;
   data: {
     assignmentId: string;
     hasOpenedStore: boolean;
     storeVisitedAt: string;
+    initialInstallStatus?: 'INSTALLED' | 'NOT_INSTALLED' | 'UNAVAILABLE';
   };
 }> {
   if (useDemoStore.getState().isDemoMode) {
@@ -394,6 +403,7 @@ export async function recordStoreVisitApi(taskId: string): Promise<{
         assignmentId: `demo-assignment-${taskId}`,
         hasOpenedStore: true,
         storeVisitedAt: new Date().toISOString(),
+        initialInstallStatus: payload?.initialInstallStatus,
       },
     };
   }
@@ -404,9 +414,56 @@ export async function recordStoreVisitApi(taskId: string): Promise<{
       assignmentId: string;
       hasOpenedStore: boolean;
       storeVisitedAt: string;
+      initialInstallStatus?: 'INSTALLED' | 'NOT_INSTALLED' | 'UNAVAILABLE';
     };
   }>(`/tasks/${taskId}/store-visit`, {
     method: 'POST',
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/verify-install
+ * Verifies app installation on device and authoritatively completes task exactly once.
+ */
+export async function verifyAppInstallApi(
+  taskId: string,
+  payload: {
+    packageName: string;
+  }
+): Promise<{
+  success: boolean;
+  message?: string;
+  data: {
+    status: 'VERIFIED';
+    rewardPoints: number;
+    completionId: string;
+    message: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        status: 'VERIFIED',
+        rewardPoints: 20,
+        completionId: `demo-comp-${taskId}`,
+        message: 'Installation verified! +20 promotional points credited.',
+      },
+    };
+  }
+  return apiClient<{
+    success: boolean;
+    message?: string;
+    data: {
+      status: 'VERIFIED';
+      rewardPoints: number;
+      completionId: string;
+      message: string;
+    };
+  }>(`/tasks/${taskId}/verify-install`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 
@@ -885,7 +942,7 @@ export async function submitVideoQuizAnswerApi(
 
 /**
  * POST /api/tasks/:id/app-feedback/submit
- * Submits user testing feedback and awards promotional points.
+ * Submits user testing feedback and awards promotional points or queues for manual review.
  */
 export async function submitAppFeedbackApi(
   taskId: string,
@@ -893,11 +950,12 @@ export async function submitAppFeedbackApi(
     feedback: string;
     rating?: number;
     answer?: string;
+    completionCode?: string;
   }
 ): Promise<{
   success: boolean;
   data: {
-    status: 'VERIFIED';
+    status: 'VERIFIED' | 'PENDING_REVIEW';
     rewardPoints: number;
     completionId: string;
     message: string;
@@ -918,7 +976,7 @@ export async function submitAppFeedbackApi(
   return apiClient<{
     success: boolean;
     data: {
-      status: 'VERIFIED';
+      status: 'VERIFIED' | 'PENDING_REVIEW';
       rewardPoints: number;
       completionId: string;
       message: string;
@@ -928,4 +986,392 @@ export async function submitAppFeedbackApi(
     body: JSON.stringify(payload),
   });
 }
+
+/**
+ * POST /api/tasks/:id/youtube-session/start
+ * Initializes educational YouTube video learning session.
+ */
+export async function startYouTubeSessionApi(taskId: string): Promise<{
+  success: boolean;
+  data: {
+    sessionId: string;
+    taskId: string;
+    assignmentId?: string;
+    youtubeConfig: {
+      youtubeUrl: string;
+      videoId: string;
+      videoTitle: string;
+      sessionDurationSeconds: number;
+      requiredDurationSeconds: number;
+      instructions?: string;
+      educationalNotice?: string;
+      comprehensionQuiz?: {
+        question: string;
+        options: string[];
+      };
+    };
+    accumulatedSeconds: number;
+    status: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        sessionId: `demo-yt-session-${taskId}`,
+        taskId,
+        youtubeConfig: {
+          youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          videoId: 'dQw4w9WgXcQ',
+          videoTitle: 'Educational Learning Session',
+          sessionDurationSeconds: 45,
+          requiredDurationSeconds: 45,
+          comprehensionQuiz: {
+            question: 'What is the safest action when an unknown caller asks for your OTP?',
+            options: [
+              'Never share the OTP with anyone under any circumstances',
+              'Share only if the caller claims to be bank security',
+              'Share only the first 2 digits',
+              'Email the OTP',
+            ],
+          },
+        },
+        accumulatedSeconds: 0,
+        status: 'IN_PROGRESS',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      sessionId: string;
+      taskId: string;
+      assignmentId?: string;
+      youtubeConfig: {
+        youtubeUrl: string;
+        videoId: string;
+        videoTitle: string;
+        sessionDurationSeconds: number;
+        requiredDurationSeconds: number;
+        instructions?: string;
+        educationalNotice?: string;
+        comprehensionQuiz?: {
+          question: string;
+          options: string[];
+        };
+      };
+      accumulatedSeconds: number;
+      status: string;
+      isCompleted?: boolean;
+      rewardGranted?: boolean;
+    };
+  }>(`/tasks/${taskId}/youtube-session/start`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * POST /api/tasks/:id/youtube-session/progress
+ * Heartbeat recording educational session engagement time.
+ */
+export async function recordYouTubeProgressApi(
+  taskId: string,
+  sessionId: string,
+  accumulatedSeconds: number
+): Promise<{
+  success: boolean;
+  data: {
+    sessionId: string;
+    accumulatedSeconds: number;
+    requiredDurationSeconds: number;
+    isDurationMet: boolean;
+    status: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        sessionId,
+        accumulatedSeconds,
+        requiredDurationSeconds: 45,
+        isDurationMet: accumulatedSeconds >= 45,
+        status: 'IN_PROGRESS',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      sessionId: string;
+      accumulatedSeconds: number;
+      requiredDurationSeconds: number;
+      isDurationMet: boolean;
+      status: string;
+    };
+  }>(`/tasks/${taskId}/youtube-session/progress`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, accumulatedSeconds }),
+  });
+}
+
+/**
+ * GET /api/tasks/:id/youtube-session/status
+ * Fetches current session status and quiz verification state.
+ */
+export async function getYouTubeSessionStatusApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  data: {
+    sessionId: string;
+    accumulatedSeconds: number;
+    requiredDurationSeconds: number;
+    isDurationMet: boolean;
+    isQuizAnswered: boolean;
+    status: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        sessionId,
+        accumulatedSeconds: 45,
+        requiredDurationSeconds: 45,
+        isDurationMet: true,
+        isQuizAnswered: true,
+        status: 'READY_TO_CLAIM',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      sessionId: string;
+      accumulatedSeconds: number;
+      requiredDurationSeconds: number;
+      isDurationMet: boolean;
+      isQuizAnswered: boolean;
+      status: string;
+    };
+  }>(`/tasks/${taskId}/youtube-session/status?sessionId=${encodeURIComponent(sessionId)}`);
+}
+
+/**
+ * POST /api/tasks/:id/youtube-session/quiz
+ * Submits the user's answer to the YouTube comprehension question.
+ */
+export async function submitYouTubeQuizAnswerApi(
+  taskId: string,
+  sessionId: string,
+  selectedOptionIndex: number
+): Promise<{
+  success: boolean;
+  data: {
+    isCorrect: boolean;
+    attemptsCount: number;
+    message: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        isCorrect: true,
+        attemptsCount: 1,
+        message: 'Quiz answer verified (Demo Mode)',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      isCorrect: boolean;
+      attemptsCount: number;
+      message: string;
+    };
+  }>(`/tasks/${taskId}/youtube-session/quiz`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, selectedOptionIndex }),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/youtube-learning/verify
+ * Final verification of educational session & quiz completion, creating a double-entry ledger reward.
+ */
+export async function verifyYouTubeLearningApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  data: {
+    status: 'VERIFIED';
+    rewardPoints: number;
+    completionId: string;
+    message: string;
+  };
+}> {
+  if (useDemoStore.getState().isDemoMode) {
+    return {
+      success: true,
+      data: {
+        status: 'VERIFIED',
+        rewardPoints: 250,
+        completionId: `demo-yt-comp-${taskId}`,
+        message: 'Educational video learning verified and rewards credited! (Demo Mode)',
+      },
+    };
+  }
+
+  return apiClient<{
+    success: boolean;
+    data: {
+      status: 'VERIFIED';
+      rewardPoints: number;
+      completionId: string;
+      message: string;
+    };
+  }>(`/tasks/${taskId}/youtube-learning/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+export interface ExternalLinkSessionData {
+  sessionId: string;
+  attemptId?: string;
+  attemptStatus?: string;
+  message?: string;
+  taskId: string;
+  assignmentId?: string;
+  targetUrl: string;
+  category: string;
+  requiredDurationSeconds: number;
+  startedAt: string;
+  linkLaunched: boolean;
+  linkLaunchedAt?: string;
+  launchFailure?: boolean;
+  launchFailureReason?: string;
+  accumulatedAwaySeconds?: number;
+  elapsedSeconds: number;
+  remainingSeconds: number;
+  isDurationMet: boolean;
+  isAway?: boolean;
+  resumed?: boolean;
+  status?: string;
+  isCompleted?: boolean;
+  rewardGranted?: boolean;
+}
+
+/**
+ * POST /api/tasks/:id/external-link/start
+ */
+export async function startExternalLinkSessionApi(taskId: string): Promise<{
+  success: boolean;
+  data: ExternalLinkSessionData;
+}> {
+  return apiClient<{ success: boolean; data: ExternalLinkSessionData }>(`/tasks/${taskId}/external-link/start`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * POST /api/tasks/:id/external-link/launch
+ */
+export async function reportExternalLinkLaunchApi(
+  taskId: string,
+  sessionId: string,
+  success: boolean,
+  failureReason?: string
+): Promise<{
+  success: boolean;
+  data: {
+    sessionId: string;
+    attemptId?: string;
+    attemptStatus?: string;
+    linkLaunched: boolean;
+    linkLaunchedAt?: string;
+    launchFailure: boolean;
+    launchFailureReason?: string;
+    accumulatedAwaySeconds?: number;
+    elapsedSeconds: number;
+    remainingSeconds: number;
+    isDurationMet: boolean;
+    isAway?: boolean;
+  };
+}> {
+  return apiClient(`/tasks/${taskId}/external-link/launch`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, success, failureReason }),
+  });
+}
+
+/**
+ * POST /api/tasks/:id/external-link/return
+ * Closes attempt, invalidates if returned early or confirms single uninterrupted duration.
+ */
+export async function reportExternalLinkReturnApi(
+  taskId: string,
+  sessionId?: string,
+  attemptId?: string
+): Promise<{
+  success: boolean;
+  data: ExternalLinkSessionData;
+}> {
+  return apiClient(`/tasks/${taskId}/external-link/return`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, attemptId }),
+  });
+}
+
+/**
+ * GET /api/tasks/:id/external-link/status
+ */
+export async function getExternalLinkSessionStatusApi(
+  taskId: string,
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  data: ExternalLinkSessionData;
+}> {
+  const url = sessionId
+    ? `/tasks/${taskId}/external-link/${sessionId}`
+    : `/tasks/${taskId}/external-link/status`;
+  return apiClient(url);
+}
+
+/**
+ * POST /api/tasks/:id/external-link/verify
+ */
+export async function verifyExternalLinkElapsedApi(
+  taskId: string,
+  sessionId: string
+): Promise<{
+  success: boolean;
+  status: 'COMPLETED' | 'INCOMPLETE' | 'NOT_ELIGIBLE';
+  message?: string;
+  data: {
+    completionId?: string;
+    rewardPoints?: number;
+    evidenceId?: string;
+    evidenceLabel?: string;
+    sessionId?: string;
+    elapsedSeconds?: number;
+    requiredDurationSeconds?: number;
+    remainingSeconds?: number;
+  };
+}> {
+  return apiClient(`/tasks/${taskId}/external-link/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
 

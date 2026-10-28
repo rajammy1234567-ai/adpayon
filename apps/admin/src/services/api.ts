@@ -68,10 +68,31 @@ class ApiClient {
     return this.refreshToken;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit & { timeoutMs?: number } = {}
+  ): Promise<T> {
+    const { timeoutMs = 15000, signal: userSignal, ...fetchOptions } = options;
+
+    const controller = new AbortController();
+    let isTimedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      isTimedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
+    if (userSignal) {
+      if (userSignal.aborted) {
+        controller.abort();
+      } else {
+        userSignal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string>),
+      ...(fetchOptions.headers as Record<string, string>),
     };
 
     if (this.accessToken) {
@@ -79,11 +100,28 @@ class ApiClient {
     }
 
     const config: RequestInit = {
-      ...options,
+      ...fetchOptions,
       headers,
+      signal: controller.signal,
     };
 
-    let response = await fetch(`${API_BASE}${endpoint}`, config);
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, config);
+    } catch (err: any) {
+      if (err.name === 'AbortError' || isTimedOut) {
+        throw new ApiError(
+          'Request timed out. The backend server took too long to respond. Please verify connectivity and try again.',
+          'TIMEOUT'
+        );
+      }
+      throw new ApiError(
+        err.message || 'Network communication error. Unable to connect to server.',
+        'NETWORK_ERROR'
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // Automatic token rotation on 401 Unauthorized
     if (response.status === 401 && this.refreshToken && !endpoint.includes('/auth/')) {
@@ -128,23 +166,33 @@ class ApiClient {
   }
 
   // --- Auth Endpoints ---
-  public async login(mobile: string, password: string) {
+  public async login(
+    mobile: string,
+    password: string,
+    options: { signal?: AbortSignal; timeoutMs?: number } = {}
+  ) {
     return this.request<{
       success: boolean;
       data: { mfaRequired: boolean; mfaSessionToken: string; maskedMobile: string; message: string };
     }>('/admin/auth/login', {
       method: 'POST',
       body: JSON.stringify({ mobile, password }),
+      ...options,
     });
   }
 
-  public async verifyMfa(mfaSessionToken: string, otp: string) {
+  public async verifyMfa(
+    mfaSessionToken: string,
+    otp: string,
+    options: { signal?: AbortSignal; timeoutMs?: number } = {}
+  ) {
     const res = await this.request<{
       success: boolean;
       data: { accessToken: string; refreshToken: string; admin: AdminUser };
     }>('/admin/auth/mfa-verify', {
       method: 'POST',
       body: JSON.stringify({ mfaSessionToken, otp }),
+      ...options,
     });
     if (res.success && res.data.accessToken) {
       this.setTokens(res.data.accessToken, res.data.refreshToken);

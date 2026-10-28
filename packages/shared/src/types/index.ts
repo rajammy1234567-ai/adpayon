@@ -331,7 +331,9 @@ export type TaskCategory =
   | 'SURVEY'
   | 'MANUAL_VERIFY'
   | 'APP_INSTALL'
+  | 'APP_TESTING'
   | 'VIDEO_WATCH'
+  | 'YOUTUBE_LEARNING'
   | 'ARTICLE_READ';
 
 export type VerificationMethod =
@@ -340,8 +342,8 @@ export type VerificationMethod =
   | 'MANUAL_REVIEW';
 
 export type AppInstallPlatform = 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
-export type AppInstallAttributionMethod = 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK';
-export type AppInstallConversionEvent = 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+export type AppInstallAttributionMethod = 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK' | 'PARTNER_CALLBACK' | 'USAGE_STATS' | 'CLIENT_PACKAGE_PRESENCE';
+export type AppInstallConversionEvent = 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE' | 'INSTALL_ONLY';
 
 export interface AppInstallConfig {
   appName: string;
@@ -352,7 +354,11 @@ export interface AppInstallConfig {
   conversionEvent?: AppInstallConversionEvent;
   testingSteps?: string;
   feedbackQuestion?: string;
+  requiredTestingSeconds?: number;
+  completionCode?: string;
 }
+
+export type AppTestingConfig = AppInstallConfig;
 
 export type VideoCompletionPolicy = 'FULL_VIDEO' | 'MINIMUM_DURATION';
 
@@ -369,6 +375,28 @@ export interface VideoWatchConfig {
     correctOptionIndex?: number;
   };
 }
+
+export interface YouTubeLearningConfig {
+  youtubeUrl: string;
+  videoId: string;
+  sessionDurationSeconds: number;
+  instructions?: string;
+  comprehensionQuiz?: {
+    question: string;
+    options: string[];
+    correctOptionIndex?: number;
+  };
+}
+
+export interface TaskTargeting {
+  minAncestryDepth?: number;
+  kycRequired?: boolean;
+  allowedStates?: string[];
+  assignedUserIds?: string[];
+  userGroups?: string[];
+}
+
+export type TaskCompletionStatus = 'VERIFIED' | 'REJECTED' | 'FLAGGED' | 'PENDING_REVIEW';
 
 export interface ArticleReadComprehensionQuizAdmin {
   question: string;
@@ -473,6 +501,8 @@ export interface ArticleSessionData {
   quizMaxAttempts: number;
   isQualified: boolean;
   expiresAt: string | Date;
+  isCompleted?: boolean;
+  rewardGranted?: boolean;
 }
 
 export interface ArticleSessionProgressPayload {

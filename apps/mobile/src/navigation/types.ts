@@ -26,6 +26,8 @@ export type RootStackParamList = {
   ShoppingCashback: undefined;
   KycUpload: undefined;
   VideoWatchTask: { taskId: string; assignmentId?: string };
+  YouTubeLearningTask: { taskId: string; assignmentId?: string };
   ArticleReadTask: { taskId: string; assignmentId?: string };
   AppInstallTask: { taskId: string; assignmentId?: string };
 };
+

@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "start:sandbox": "node ./scripts/start-sandbox.js",
+    "start:sandbox": "node ./scripts/start-sandbox.js --localhost",
     "android": "expo run:android",
     "android:sandbox": "node ./scripts/start-sandbox.js --android",
     "ios": "expo run:ios",

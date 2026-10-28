@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import { VerificationMethod } from './Task';
 
-export type CompletionStatus = 'VERIFIED' | 'REJECTED' | 'FLAGGED';
+export type CompletionStatus = 'VERIFIED' | 'REJECTED' | 'FLAGGED' | 'PENDING_REVIEW';
 
 export interface ITaskCompletion extends Document {
   _id: Types.ObjectId;
@@ -61,7 +61,7 @@ const taskCompletionSchema = new Schema<ITaskCompletion>(
     },
     status: {
       type: String,
-      enum: ['VERIFIED', 'REJECTED', 'FLAGGED'],
+      enum: ['VERIFIED', 'REJECTED', 'FLAGGED', 'PENDING_REVIEW'],
       default: 'VERIFIED',
     },
     verificationMethod: {

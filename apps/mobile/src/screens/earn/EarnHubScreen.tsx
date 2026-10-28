@@ -276,6 +276,10 @@ export const EarnHubScreen: React.FC = () => {
       navigation.navigate('VideoWatchTask', dest.params);
       return;
     }
+    if (dest.screen === 'YouTubeLearningTask') {
+      navigation.navigate('YouTubeLearningTask', dest.params);
+      return;
+    }
     if (dest.screen === 'ArticleReadTask') {
       navigation.navigate('ArticleReadTask', dest.params);
       return;
@@ -401,8 +405,12 @@ export const EarnHubScreen: React.FC = () => {
           });
           if (dest.screen === 'VideoWatchTask') {
             navigation.navigate('VideoWatchTask', dest.params);
+          } else if (dest.screen === 'YouTubeLearningTask') {
+            navigation.navigate('YouTubeLearningTask', dest.params);
           } else if (dest.screen === 'ArticleReadTask') {
             navigation.navigate('ArticleReadTask', dest.params);
+          } else if (dest.screen === 'AppInstallTask') {
+            navigation.navigate('AppInstallTask', dest.params);
           }
           return;
         }

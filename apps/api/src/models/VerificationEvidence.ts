@@ -1,6 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
-export type EvidenceType = 'WEBHOOK_PAYLOAD' | 'FIRST_PARTY_TELEMETRY' | 'ADMIN_OVERRIDE';
+export type EvidenceType = 'WEBHOOK_PAYLOAD' | 'FIRST_PARTY_TELEMETRY' | 'ADMIN_OVERRIDE' | 'EXTERNAL_LINK_ELAPSED' | 'CLIENT_REPORTED_PACKAGE_PRESENCE';
 
 export interface IVerificationEvidence extends Document {
   _id: Types.ObjectId;
@@ -36,7 +36,7 @@ const verificationEvidenceSchema = new Schema<IVerificationEvidence>(
     },
     evidenceType: {
       type: String,
-      enum: ['WEBHOOK_PAYLOAD', 'FIRST_PARTY_TELEMETRY', 'ADMIN_OVERRIDE'],
+      enum: ['WEBHOOK_PAYLOAD', 'FIRST_PARTY_TELEMETRY', 'ADMIN_OVERRIDE', 'EXTERNAL_LINK_ELAPSED', 'CLIENT_REPORTED_PACKAGE_PRESENCE'],
       required: [true, 'Evidence type is required'],
     },
     signatureVerified: {

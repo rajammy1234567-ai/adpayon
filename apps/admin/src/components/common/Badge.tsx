@@ -18,6 +18,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, size = 'md' }) => {
       break;
     case 'DRAFT':
     case 'PENDING':
+    case 'PENDING_REVIEW':
     case 'IN_PROGRESS':
       styles = 'bg-amber-950/60 text-amber-400 border-amber-500/30';
       break;

@@ -26,11 +26,16 @@ async function computeUserBalance(userId: Types.ObjectId) {
   let totalCreditsPaise = 0;
   let totalHoldsPaise = 0;
   let totalWithdrawnPaise = 0;
+  let totalPromotionalPoints = 0;
 
   for (const entry of ledgerEntries) {
     if (entry.status === 'CONFIRMED') {
-      if (entry.entryType === 'TASK_REWARD' || entry.entryType === 'REFERRAL_COMMISSION' || entry.entryType === 'ADMIN_ADJUSTMENT') {
+      if (entry.entryType === 'REFERRAL_COMMISSION' || entry.entryType === 'ADMIN_ADJUSTMENT') {
+        // Withdrawable cash earnings in paise
         totalCreditsPaise += Math.max(0, entry.amountPaise);
+      } else if (entry.entryType === 'TASK_REWARD') {
+        // Promotional points (non-withdrawable currency)
+        totalPromotionalPoints += Math.max(0, entry.pointsEquivalent || 0);
       } else if (entry.entryType === 'WITHDRAWAL_PAID') {
         totalWithdrawnPaise += Math.abs(entry.amountPaise);
       }
@@ -47,15 +52,13 @@ async function computeUserBalance(userId: Types.ObjectId) {
       .map((e) => e.referenceId!.toString())
   );
 
-  let unledgeredCompletionPaise = 0;
   for (const c of completions) {
     if (!recordedCompletionIds.has(c._id.toString())) {
-      // Points to paise mapping
-      unledgeredCompletionPaise += c.rewardPoints;
+      totalPromotionalPoints += c.rewardPoints;
     }
   }
 
-  const confirmedBalancePaise = totalCreditsPaise + unledgeredCompletionPaise;
+  const confirmedBalancePaise = totalCreditsPaise;
   const availableBalancePaise = Math.max(0, confirmedBalancePaise - totalHoldsPaise - totalWithdrawnPaise);
 
   return {
@@ -64,7 +67,7 @@ async function computeUserBalance(userId: Types.ObjectId) {
     totalWithdrawnPaise,
     availableBalancePaise,
     totalEarnedPaise: confirmedBalancePaise,
-    pointsBalance: availableBalancePaise,
+    pointsBalance: totalPromotionalPoints,
   };
 }
 

@@ -1,0 +1,23 @@
+# EAS Build Archive Inclusion Rules
+# Exclude heavy temporary artifacts and caches while preserving native Android files
+
+node_modules/
+.expo/
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+
+# Secrets & Environment Exclusions
+.env
+.env.*
+*.env
+*.env.*
+*.pem
+*.jks
+*.key
+*.p8
+*.p12
+staging-credentials-handoff*
+

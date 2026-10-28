@@ -12,12 +12,11 @@ export default defineConfig(({ mode }) => {
   const port = isSandbox ? 5174 : 5173;
 
   // Configurable proxy target with fallback to local defaults
-  const rawTarget =
-    env.VITE_API_TARGET_URL ||
-    env.VITE_PROXY_TARGET ||
-    process.env.VITE_API_TARGET_URL ||
-    process.env.VITE_PROXY_TARGET ||
-    (isSandbox ? 'http://127.0.0.1:5001' : 'http://127.0.0.1:5000');
+  // In sandbox mode, strictly target local sandbox API on 5001 unless explicitly overridden with a sandbox target
+  const defaultTarget = isSandbox ? 'http://127.0.0.1:5001' : 'http://127.0.0.1:5000';
+  const rawTarget = isSandbox
+    ? (env.VITE_SANDBOX_API_URL || (env.VITE_API_TARGET_URL && !env.VITE_API_TARGET_URL.includes('onrender.com') ? env.VITE_API_TARGET_URL : defaultTarget))
+    : (env.VITE_API_TARGET_URL || env.VITE_PROXY_TARGET || process.env.VITE_API_TARGET_URL || process.env.VITE_PROXY_TARGET || defaultTarget);
 
   // Strip trailing '/api' and '/' to ensure Vite proxy does not duplicate '/api'
   let targetApi = rawTarget.trim();

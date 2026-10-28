@@ -10,6 +10,22 @@ function prompt(rl: readline.Interface, question: string): Promise<string> {
   return new Promise((resolve) => rl.question(question, (answer) => resolve(answer.trim())));
 }
 
+function promptHidden(rl: readline.Interface, question: string): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write(question);
+    const origWrite = (rl as any)._writeToOutput;
+    (rl as any)._writeToOutput = function (stringToWrite: string) {
+      if (stringToWrite.includes('\n') || stringToWrite.includes('\r')) {
+        process.stdout.write('\n');
+      }
+    };
+    rl.question('', (answer) => {
+      (rl as any)._writeToOutput = origWrite;
+      resolve(answer.trim());
+    });
+  });
+}
+
 /**
  * Validates administrative password strength:
  * Minimum 10 characters, mixed uppercase, lowercase, numbers, and symbols.
@@ -80,7 +96,6 @@ export async function bootstrapAdminSandboxCli(): Promise<void> {
 
   let mobile = getArg('--mobile') || process.env.SANDBOX_ADMIN_MOBILE;
   let name = getArg('--name') || process.env.SANDBOX_ADMIN_NAME;
-  let password = getArg('--password') || process.env.SANDBOX_ADMIN_PASSWORD;
   const isAutoConfirmed = args.includes('--confirm') || process.env.SANDBOX_ADMIN_CONFIRM === 'true';
 
   const rl = readline.createInterface({
@@ -136,19 +151,13 @@ export async function bootstrapAdminSandboxCli(): Promise<void> {
     }
     console.log('[SECURITY CHECK 2/3 PASSED] Confirmed: write access to dev & test databases is denied.');
 
-    // 4. Operator Prompts
+    // 4. Operator Prompts & Account Lookup
     if (!mobile) {
-      mobile = await prompt(rl, '\nEnter Sandbox Admin Mobile Number (+919876543210): ');
-    }
-    if (!name) {
-      name = await prompt(rl, 'Enter Sandbox Admin Full Name: ');
-    }
-    if (!password) {
-      password = await prompt(rl, 'Enter Secure Sandbox Admin Password (min 10 chars, mixed case, numbers, special): ');
+      mobile = await prompt(rl, '\nEnter Sandbox Admin Mobile Number (+91XXXXXXXXXX): ');
     }
 
-    if (!mobile || !name || !password) {
-      console.error('\n[FATAL] Mobile, Name, and Password are all strictly required.');
+    if (!mobile) {
+      console.error('\n[FATAL] Mobile number is strictly required.');
       await mongoose.disconnect();
       process.exit(1);
     }
@@ -162,6 +171,95 @@ export async function bootstrapAdminSandboxCli(): Promise<void> {
       process.exit(1);
     }
 
+    // 5. Check Existing Account in adpayon_sandbox
+    console.log('\n[SECURITY CHECK 3/3] Inspecting adpayon_sandbox user collection...');
+    const existingUser = await User.findOne({ mobile: normalizedMobile });
+
+    if (existingUser) {
+      if (existingUser.role !== 'ADMIN') {
+        console.error(
+          `\n[FATAL SECURITY VIOLATION] User ${normalizedMobile} already exists with non-admin role '${existingUser.role}'.` +
+            `\nOverwriting or promoting existing unrelated users is strictly prohibited in sandbox.`
+        );
+        await mongoose.disconnect();
+        process.exit(1);
+      }
+
+      console.log(`\nAdministrator ${normalizedMobile} (${existingUser.name || 'Admin'}) is registered in adpayon_sandbox.`);
+      const updateChoice = await prompt(
+        rl,
+        `Would you like to set/update the password for this administrator? (Type 'YES' to update): `
+      );
+
+      if (updateChoice !== 'YES') {
+        console.log(`\n======================================================`);
+        console.log(`[IDEMPOTENT RERUN] Administrator ${normalizedMobile} preserved without changes.`);
+        console.log(`Admin ID:      ${existingUser._id}`);
+        console.log(`Role:          ${existingUser.role}`);
+        console.log(`Status:        ${existingUser.status}`);
+        console.log(`======================================================\n`);
+        await mongoose.disconnect();
+        return;
+      }
+
+      const password = await promptHidden(rl, 'Enter New Secure Sandbox Admin Password (min 10 chars, mixed case, numbers, special): ');
+      const passCheck = validateAdminPassword(password);
+      if (!passCheck.valid) {
+        console.error(`\n[FATAL] Password validation failed: ${passCheck.error}`);
+        await mongoose.disconnect();
+        process.exit(1);
+      }
+
+      const confirmPassword = await promptHidden(rl, 'Confirm New Sandbox Admin Password: ');
+      if (password !== confirmPassword) {
+        console.error('\n[FATAL] Passwords do not match.');
+        await mongoose.disconnect();
+        process.exit(1);
+      }
+
+      console.log('\nGenerating cryptographic Argon2id password hash...');
+      const passwordHash = await hashPassword(password);
+      existingUser.passwordHash = passwordHash;
+      existingUser.status = 'ACTIVE';
+      await existingUser.save();
+
+      await AdminAuditLog.create({
+        adminId: existingUser._id,
+        action: 'SANDBOX_BOOTSTRAP_UPDATED_ADMIN_PASSWORD',
+        targetEntity: 'User',
+        targetId: existingUser._id.toString(),
+        details: {
+          mobile: normalizedMobile,
+          database: 'adpayon_sandbox',
+        },
+        ipAddress: '127.0.0.1 (Sandbox CLI Bootstrap)',
+      });
+
+      console.log('\n======================================================');
+      console.log('   SANDBOX ADMINISTRATOR PASSWORD UPDATED SUCCESSFULLY');
+      console.log('======================================================');
+      console.log(`Admin ID:       ${existingUser._id}`);
+      console.log(`Mobile:         ${normalizedMobile}`);
+      console.log(`Role:           ADMIN`);
+      console.log(`Status:         ACTIVE`);
+      console.log(`Database:       adpayon_sandbox`);
+      console.log('======================================================\n');
+
+      await mongoose.disconnect();
+      return;
+    }
+
+    // Account does not exist yet: provision new admin
+    if (!name) {
+      name = await prompt(rl, 'Enter Sandbox Admin Full Name: ');
+    }
+    if (!name) {
+      console.error('\n[FATAL] Admin name is strictly required.');
+      await mongoose.disconnect();
+      process.exit(1);
+    }
+
+    const password = await promptHidden(rl, 'Enter Secure Sandbox Admin Password (min 10 chars, mixed case, numbers, special): ');
     const passCheck = validateAdminPassword(password);
     if (!passCheck.valid) {
       console.error(`\n[FATAL] Password validation failed: ${passCheck.error}`);
@@ -169,27 +267,9 @@ export async function bootstrapAdminSandboxCli(): Promise<void> {
       process.exit(1);
     }
 
-    // 5. Check Existing Account in adpayon_sandbox
-    console.log('\n[SECURITY CHECK 3/3] Inspecting adpayon_sandbox user collection...');
-    const existingUser = await User.findOne({ mobile: normalizedMobile });
-
-    if (existingUser) {
-      if (existingUser.role === 'ADMIN') {
-        console.log(`\n======================================================`);
-        console.log(`[IDEMPOTENT RERUN] Administrator ${normalizedMobile} already exists in adpayon_sandbox.`);
-        console.log(`Admin ID:      ${existingUser._id}`);
-        console.log(`Role:          ${existingUser.role}`);
-        console.log(`Status:        ${existingUser.status}`);
-        console.log(`No duplicate accounts created.`);
-        console.log(`======================================================\n`);
-        await mongoose.disconnect();
-        return;
-      }
-
-      console.error(
-        `\n[FATAL SECURITY VIOLATION] User ${normalizedMobile} already exists with non-admin role '${existingUser.role}'.` +
-          `\nOverwriting or promoting existing unrelated users is strictly prohibited in sandbox.`
-      );
+    const confirmPassword = await promptHidden(rl, 'Confirm Sandbox Admin Password: ');
+    if (password !== confirmPassword) {
+      console.error('\n[FATAL] Passwords do not match.');
       await mongoose.disconnect();
       process.exit(1);
     }

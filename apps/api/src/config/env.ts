@@ -85,8 +85,36 @@ const envSchema = z
     MSG91_FLOW_ID: z.string().optional(),
     STAGING_REVIEWER_MOBILES: z.string().optional(),
     STAGING_OPERATOR_SECRET: z.string().optional(),
+    TERMINAL_OTP_ENABLED: z
+      .string()
+      .default('false')
+      .transform((val) => val === 'true' || val === '1'),
+    TERMINAL_OTP_ALLOWLIST_MOBILES: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.TERMINAL_OTP_ENABLED) {
+      if (data.NODE_ENV === 'production' || data.APP_ENV === 'client_staging' || data.APP_ENV === 'staging') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TERMINAL_OTP_ENABLED'],
+          message: 'TERMINAL_OTP_ENABLED is strictly prohibited in production and staging environments',
+        });
+      }
+      if (!data.TERMINAL_OTP_ALLOWLIST_MOBILES || data.TERMINAL_OTP_ALLOWLIST_MOBILES.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TERMINAL_OTP_ALLOWLIST_MOBILES'],
+          message: 'TERMINAL_OTP_ALLOWLIST_MOBILES is required when TERMINAL_OTP_ENABLED is true',
+        });
+      }
+      if (data.HOST !== '127.0.0.1' && data.HOST !== 'localhost') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['HOST'],
+          message: 'Security Guard: HOST must be bound strictly to 127.0.0.1 when TERMINAL_OTP_ENABLED is true',
+        });
+      }
+    }
     if (data.SMS_PROVIDER === 'staging_manual') {
       if (data.APP_ENV !== 'client_staging' && data.APP_ENV !== 'staging') {
         ctx.addIssue({

@@ -18,6 +18,7 @@ import { ReferralInviteScreen } from '../screens/referral/ReferralInviteScreen';
 import { MobileRechargeScreen } from '../screens/utility/MobileRechargeScreen';
 import { ShoppingCashbackScreen } from '../screens/utility/ShoppingCashbackScreen';
 import { VideoWatchTaskScreen } from '../screens/earn/VideoWatchTaskScreen';
+import { YouTubeLearningTaskScreen } from '../screens/earn/YouTubeLearningTaskScreen';
 import { ArticleReadTaskScreen } from '../screens/earn/ArticleReadTaskScreen';
 import { AppInstallTaskScreen } from '../screens/earn/AppInstallTaskScreen';
 import { AppTabs } from './AppTabs';
@@ -82,6 +83,7 @@ export const RootNavigator: React.FC = () => {
             <Stack.Screen name="ShoppingCashback" component={ShoppingCashbackScreen} />
             <Stack.Screen name="KycUpload" component={KycUploadScreen} />
             <Stack.Screen name="VideoWatchTask" component={VideoWatchTaskScreen} />
+            <Stack.Screen name="YouTubeLearningTask" component={YouTubeLearningTaskScreen} />
             <Stack.Screen name="ArticleReadTask" component={ArticleReadTaskScreen} />
             <Stack.Screen name="AppInstallTask" component={AppInstallTaskScreen} />
           </Stack.Group>

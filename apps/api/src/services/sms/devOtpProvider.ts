@@ -52,6 +52,20 @@ export class DevOtpProvider implements ISmsProvider {
   }
 
   /**
+   * Records an active development OTP in the local memory registry.
+   */
+  public static recordDevOtp(mobile: string, otp: string, purpose: string): void {
+    if (env.NODE_ENV === 'production' || !env.DEV_OTP_ENABLED) {
+      return;
+    }
+    devOtpMemoryRegistry.set(mobile, {
+      otp,
+      purpose,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+    });
+  }
+
+  /**
    * Safely retrieves the currently cached OTP for local development verification.
    * Accessible strictly in development via authorized loopback interface or tests.
    */

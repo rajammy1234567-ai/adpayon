@@ -9,6 +9,9 @@ import {
   ShieldAlert,
   Sparkles,
   AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { TaskCompletion, Pagination } from '../types';
@@ -24,9 +27,12 @@ export const TaskCompletions: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Evidence Inspection Modal
+  // Evidence Inspection Modal & Review Actions
   const [selectedCompletion, setSelectedCompletion] = useState<TaskCompletion | null>(null);
   const [copiedClickId, setCopiedClickId] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const fetchCompletions = async (page = 1) => {
     setIsLoading(true);
@@ -60,6 +66,30 @@ export const TaskCompletions: React.FC = () => {
     navigator.clipboard.writeText(text);
     setCopiedClickId(id);
     setTimeout(() => setCopiedClickId(null), 2000);
+  };
+
+  const handleReview = async (status: 'VERIFIED' | 'REJECTED') => {
+    if (!selectedCompletion) return;
+    setIsReviewing(true);
+    setReviewError(null);
+    try {
+      const res = await api.reviewCompletion(selectedCompletion.id, {
+        status,
+        adminReviewNotes: reviewNotes.trim() || (status === 'VERIFIED' ? 'Approved by admin' : 'Rejected by admin'),
+        rejectionReason: status === 'REJECTED' ? reviewNotes.trim() || 'Submission rejected by administrator' : undefined,
+      });
+      if (res.success) {
+        setSelectedCompletion(null);
+        setReviewNotes('');
+        await fetchCompletions(pagination.page);
+      } else {
+        setReviewError('Failed to record review determination');
+      }
+    } catch (err: any) {
+      setReviewError(err.message || 'Error processing review action');
+    } finally {
+      setIsReviewing(false);
+    }
   };
 
   const columns: Column<TaskCompletion>[] = [
@@ -139,15 +169,23 @@ export const TaskCompletions: React.FC = () => {
       ),
     },
     {
-      header: 'Evidence',
+      header: 'Evidence / Action',
       className: 'text-right',
       accessor: (row) => (
         <button
-          onClick={() => setSelectedCompletion(row)}
-          className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold transition"
+          onClick={() => {
+            setSelectedCompletion(row);
+            setReviewNotes('');
+            setReviewError(null);
+          }}
+          className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition ${
+            row.status === 'PENDING_REVIEW'
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+              : 'text-emerald-400 hover:text-emerald-300 border-transparent hover:border-obsidian-700'
+          }`}
         >
           <Eye className="w-3.5 h-3.5" />
-          <span>Inspect</span>
+          <span>{row.status === 'PENDING_REVIEW' ? 'Review Submission' : 'Inspect'}</span>
         </button>
       ),
     },
@@ -184,7 +222,7 @@ export const TaskCompletions: React.FC = () => {
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
         {/* Status Filter */}
         <div className="flex items-center gap-1 overflow-x-auto p-1 bg-obsidian-900 border border-obsidian-700 rounded-xl">
-          {['ALL', 'VERIFIED', 'FLAGGED', 'REJECTED'].map((st) => (
+          {['ALL', 'PENDING_REVIEW', 'VERIFIED', 'FLAGGED', 'REJECTED'].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -269,6 +307,55 @@ export const TaskCompletions: React.FC = () => {
                 {JSON.stringify(selectedCompletion.evidence || { status: 'Direct First-Party Verified Dwell Time' }, null, 2)}
               </pre>
             </div>
+
+            {/* Review Decision Card for PENDING_REVIEW submissions */}
+            {selectedCompletion.status === 'PENDING_REVIEW' && (
+              <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-950/20 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Manual Review Determination
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Review the user feedback and evidence above. Approving will automatically credit{' '}
+                  <strong className="text-amber-300">{selectedCompletion.rewardPoints} PTS</strong> to the user's double-entry wallet ledger.
+                </p>
+
+                {reviewError && (
+                  <p className="text-xs text-rose-400 font-medium">{reviewError}</p>
+                )}
+
+                <input
+                  type="text"
+                  placeholder="Review notes or rejection reason (optional for approval)..."
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  className="w-full rounded-xl border border-obsidian-600 bg-obsidian-900 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+                />
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={isReviewing}
+                    onClick={() => handleReview('REJECTED')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-xs font-bold transition disabled:opacity-50"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Reject</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isReviewing}
+                    onClick={() => handleReview('VERIFIED')}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow transition disabled:opacity-50"
+                  >
+                    {isReviewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    <span>Approve & Credit Reward</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end pt-2">
               <button

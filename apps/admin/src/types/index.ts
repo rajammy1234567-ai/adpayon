@@ -23,7 +23,9 @@ export type TaskCategory =
   | 'MANUAL_VERIFY'
   | 'ARTICLE_READ'
   | 'VIDEO_WATCH'
-  | 'APP_INSTALL';
+  | 'APP_INSTALL'
+  | 'YOUTUBE_LEARNING'
+  | 'APP_TESTING';
 export type VerificationMethod = 'FIRST_PARTY_ACTION' | 'AUTHENTICATED_WEBHOOK' | 'MANUAL_REVIEW';
 export type TaskStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED';
 
@@ -31,6 +33,8 @@ export interface TaskTargeting {
   minAncestryDepth?: number;
   kycRequired?: boolean;
   allowedStates?: string[];
+  assignedUserIds?: string[];
+  userGroups?: string[];
 }
 
 export interface ComprehensionQuiz {
@@ -59,15 +63,28 @@ export interface VideoWatchConfig {
   comprehensionQuiz?: ComprehensionQuiz;
 }
 
+export interface YouTubeLearningConfig {
+  youtubeUrl: string;
+  videoId: string;
+  videoTitle?: string;
+  requiredDurationSeconds?: number;
+  sessionDurationSeconds?: number;
+  instructions?: string;
+  educationalNotice?: string;
+  comprehensionQuiz?: ComprehensionQuiz;
+}
+
 export interface AppInstallConfig {
   appName: string;
   packageName: string;
   platform: 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
   storeUrl: string;
-  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK';
+  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK' | 'PARTNER_CALLBACK' | 'USAGE_STATS';
   conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
   testingSteps?: string;
   feedbackQuestion?: string;
+  requiredTestingSeconds?: number;
+  completionCode?: string;
 }
 
 export interface Task {
@@ -95,6 +112,7 @@ export interface Task {
   instructions?: string;
   articleReadConfig?: ArticleReadConfig;
   videoWatchConfig?: VideoWatchConfig;
+  youtubeLearningConfig?: YouTubeLearningConfig;
   appInstallConfig?: AppInstallConfig;
   expiresAt?: string;
   status: TaskStatus;
@@ -102,7 +120,7 @@ export interface Task {
   updatedAt: string;
 }
 
-export type CompletionStatus = 'VERIFIED' | 'FLAGGED' | 'REJECTED';
+export type CompletionStatus = 'VERIFIED' | 'FLAGGED' | 'REJECTED' | 'PENDING_REVIEW';
 
 export interface VerificationEvidence {
   id: string;

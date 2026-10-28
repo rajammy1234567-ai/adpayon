@@ -1,0 +1,31 @@
+# EAS Build Monorepo Archive Inclusion Rules
+# Exclude dependencies and caches while ensuring native Android directories are included
+
+node_modules/
+*/node_modules/
+packages/*/node_modules/
+apps/*/node_modules/
+.expo/
+apps/*/.expo/
+dist/
+packages/*/dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+
+# Secrets & Environment Exclusions
+.env
+.env.*
+*.env
+*.env.*
+*.pem
+*.jks
+*.key
+*.p8
+*.p12
+staging-credentials-handoff*
+apps/api/.env*
+apps/admin/.env*
+
+

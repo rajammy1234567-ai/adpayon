@@ -1,13 +1,96 @@
+import path from 'node:path';
+import fs from 'node:fs';
 import readline from 'node:readline';
+import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+
+// 1. Explicitly resolve and load .env.client_staging before config/env evaluates
+const possibleStagingEnvPaths = [
+  path.resolve(process.cwd(), '.env.client_staging'),
+  path.resolve(process.cwd(), 'apps/api/.env.client_staging'),
+  path.resolve(__dirname, '../../.env.client_staging'),
+  path.resolve(__dirname, '../../../.env.client_staging'),
+  path.resolve(__dirname, '../../../../.env.client_staging'),
+];
+
+let loadedEnvPath: string | null = null;
+for (const envPath of possibleStagingEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
+    process.env.ENV_FILE = envPath;
+    loadedEnvPath = envPath;
+    break;
+  }
+}
+
+if (!loadedEnvPath) {
+  console.error('\n[FATAL] Unable to locate .env.client_staging file. Operation failed closed.');
+  process.exit(1);
+}
+
+import { env } from '../config/env';
 import { User, AdminAuditLog } from '../models';
 import { hashPassword } from '../services/passwordService';
 import { normalizeIndianMobile, generateReferralCode } from '../controllers/auth.controller';
-import { env } from '../config/env';
-import { logger } from '../config/logger';
 
-function prompt(rl: readline.Interface, question: string): Promise<string> {
-  return new Promise((resolve) => rl.question(question, (answer) => resolve(answer.trim())));
+function prompt(question: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return new Promise((resolve) =>
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    })
+  );
+}
+
+/**
+ * Prompts for sensitive input without echoing characters to terminal stdout,
+ * preventing credentials from appearing in terminal history, logs, or screen captures.
+ */
+function promptHidden(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write(question);
+    const stdin = process.stdin;
+    const wasRaw = stdin.isRaw;
+    if (stdin.setRawMode) {
+      stdin.setRawMode(true);
+    }
+    stdin.resume();
+    stdin.setEncoding('utf8');
+
+    let input = '';
+    const onData = (ch: string) => {
+      // Ctrl+C
+      if (ch === '\u0003') {
+        if (stdin.setRawMode) stdin.setRawMode(wasRaw || false);
+        stdin.pause();
+        process.stdout.write('\n');
+        process.exit(1);
+      }
+      // Enter (CR or LF)
+      if (ch === '\r' || ch === '\n') {
+        process.stdout.write('\n');
+        stdin.removeListener('data', onData);
+        if (stdin.setRawMode) stdin.setRawMode(wasRaw || false);
+        stdin.pause();
+        resolve(input);
+        return;
+      }
+      // Backspace (127 or 8)
+      if (ch === '\u0008' || ch === '\x7f') {
+        if (input.length > 0) {
+          input = input.slice(0, -1);
+        }
+        return;
+      }
+      input += ch;
+    };
+
+    stdin.on('data', onData);
+  });
 }
 
 /**
@@ -34,117 +117,106 @@ function validateAdminPassword(password: string): { valid: boolean; error?: stri
 }
 
 /**
- * Explicitly invoked Administrative Account Bootstrap.
- * NEVER RUNS AUTOMATICALLY. Must be manually executed by a system administrator.
+ * Dedicated Staging Admin Account Provisioning.
+ * Fails closed unless strictly targeting client_staging and adpayon_client_staging.
+ * Preserves all existing accounts without promotion or overwrite.
  */
 export async function bootstrapAdminCli(): Promise<void> {
   console.log('\n======================================================');
-  console.log('       ADPAYON SECURE ADMIN BOOTSTRAP CLI             ');
+  console.log('    ADPAYON SECURE STAGING ADMIN PROVISIONING         ');
   console.log('======================================================\n');
 
-  const args = process.argv.slice(2);
-  const getArg = (flag: string): string | undefined => {
-    const idx = args.indexOf(flag);
-    return idx !== -1 && args[idx + 1] ? args[idx + 1] : undefined;
-  };
+  // Strict Pre-Connection Fail-Closed Guards
+  const activeAppEnv = env.APP_ENV;
+  const configuredDbName = env.MONGODB_DB_NAME;
 
-  let mobile = getArg('--mobile') || process.env.ADMIN_BOOTSTRAP_MOBILE;
-  let name = getArg('--name') || process.env.ADMIN_BOOTSTRAP_NAME;
-  let password = getArg('--password') || process.env.ADMIN_BOOTSTRAP_PASSWORD;
-  const confirmPromote = args.includes('--confirm-promote') || process.env.ADMIN_CONFIRM_PROMOTE === 'true';
+  if (activeAppEnv !== 'client_staging' && activeAppEnv !== 'staging') {
+    console.error(`\n[FATAL] Security Guard: APP_ENV must strictly be 'client_staging'. Found: '${activeAppEnv}'. Refusing execution.`);
+    process.exit(1);
+  }
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  if (configuredDbName !== 'adpayon_client_staging') {
+    console.error(`\n[FATAL] Security Guard: Target database must strictly be 'adpayon_client_staging'. Found: '${configuredDbName}'. Refusing execution.`);
+    process.exit(1);
+  }
+
+  const mongoUri = env.MONGODB_URI;
+  if (!mongoUri) {
+    console.error('\n[FATAL] MONGODB_URI environment variable is missing.');
+    process.exit(1);
+  }
+
+  // Connect to database with strict timeout
+  console.log(`Connecting to cluster [Database: ${configuredDbName}]...`);
+  await mongoose.connect(mongoUri, {
+    dbName: configuredDbName,
+    serverSelectionTimeoutMS: 5000,
   });
 
-  try {
-    if (!mobile) {
-      mobile = await prompt(rl, 'Enter Admin Mobile Number (+919876543210): ');
-    }
-    if (!name) {
-      name = await prompt(rl, 'Enter Admin Full Name: ');
-    }
-    if (!password) {
-      password = await prompt(rl, 'Enter Secure Admin Password (min 10 chars, mixed case, numbers, special): ');
-    }
+  // Strict Post-Connection Fail-Closed Guard
+  const connectedDb = mongoose.connection.db;
+  if (!connectedDb || connectedDb.databaseName !== 'adpayon_client_staging') {
+    const connectedName = connectedDb?.databaseName || 'unknown';
+    await mongoose.disconnect();
+    console.error(`\n[FATAL] Security Guard: Connected database is '${connectedName}'. Expected 'adpayon_client_staging'. Refusing execution.`);
+    process.exit(1);
+  }
 
-    if (!mobile || !name || !password) {
-      console.error('\n[FATAL] Mobile, Name, and Password are all strictly required.');
+  console.log(`[VERIFIED] Environment: ${activeAppEnv} | Database: ${connectedDb.databaseName}\n`);
+
+  try {
+    const mobileInput = await prompt('Enter Admin Mobile Number (+91XXXXXXXXXX): ');
+    if (!mobileInput) {
+      console.error('\n[FATAL] Mobile number is required.');
+      await mongoose.disconnect();
       process.exit(1);
     }
 
     let normalizedMobile: string;
     try {
-      normalizedMobile = normalizeIndianMobile(mobile);
+      normalizedMobile = normalizeIndianMobile(mobileInput);
     } catch (err: any) {
       console.error(`\n[FATAL] Invalid mobile number: ${err.message}`);
+      await mongoose.disconnect();
       process.exit(1);
     }
 
+    // Preserve existing accounts - fail closed if account exists
+    const existingUser = await User.findOne({ mobile: normalizedMobile });
+    if (existingUser) {
+      console.error(
+        `\n[ACCOUNT PRESERVED] User with mobile ${normalizedMobile} already exists.` +
+        `\nRole: ${existingUser.role} | Status: ${existingUser.status}` +
+        `\nAutomatic overwrite or promotion is prohibited. Please use a distinct administrative mobile number.`
+      );
+      await mongoose.disconnect();
+      process.exit(1);
+    }
+
+    const name = await prompt('Enter Admin Full Name: ');
+    if (!name) {
+      console.error('\n[FATAL] Full name is required.');
+      await mongoose.disconnect();
+      process.exit(1);
+    }
+
+    // Hidden password input
+    const password = await promptHidden('Enter Secure Admin Password (min 10 chars, mixed case, numbers, special): ');
     const passCheck = validateAdminPassword(password);
     if (!passCheck.valid) {
       console.error(`\n[FATAL] Password validation failed: ${passCheck.error}`);
-      process.exit(1);
-    }
-
-    // Connect to database
-    const mongoUri = env.MONGODB_URI;
-    if (!mongoUri) {
-      console.error('\n[FATAL] MONGODB_URI environment variable is not configured.');
-      process.exit(1);
-    }
-
-    console.log(`Connecting to database cluster [DB: ${env.MONGODB_DB_NAME}]...`);
-    await mongoose.connect(mongoUri, {
-      dbName: env.MONGODB_DB_NAME,
-      serverSelectionTimeoutMS: 5000,
-    });
-
-    console.log('Connected to database. Checking existing records...');
-
-    const existingUser = await User.findOne({ mobile: normalizedMobile });
-
-    if (existingUser) {
-      if (existingUser.role === 'ADMIN') {
-        console.log(`\n[INFO] User ${normalizedMobile} is already an ACTIVE administrator.`);
-        console.log(`Admin ID: ${existingUser._id}`);
-        await mongoose.disconnect();
-        return;
-      }
-
-      if (!confirmPromote) {
-        console.error(
-          `\n[SECURITY ALERT] User ${normalizedMobile} already exists with role '${existingUser.role}'.` +
-            `\nRefusing to promote existing user without explicit '--confirm-promote' flag.`
-        );
-        await mongoose.disconnect();
-        process.exit(1);
-      }
-
-      console.log(`Promoting existing user ${normalizedMobile} to ADMIN role...`);
-      const passwordHash = await hashPassword(password);
-      existingUser.role = 'ADMIN';
-      existingUser.status = 'ACTIVE';
-      existingUser.passwordHash = passwordHash;
-      await existingUser.save();
-
-      await AdminAuditLog.create({
-        adminId: existingUser._id,
-        action: 'BOOTSTRAP_PROMOTED_ADMIN',
-        targetEntity: 'User',
-        targetId: existingUser._id.toString(),
-        details: { mobile: normalizedMobile, name },
-        ipAddress: '127.0.0.1 (CLI)',
-      });
-
-      console.log(`\n[SUCCESS] Successfully promoted ${normalizedMobile} to ADMIN role.`);
       await mongoose.disconnect();
-      return;
+      process.exit(1);
     }
 
-    // Create new admin user
-    console.log('Generating Argon2id password hash...');
+    const confirmPassword = await promptHidden('Confirm Admin Password: ');
+    if (password !== confirmPassword) {
+      console.error('\n[FATAL] Passwords do not match.');
+      await mongoose.disconnect();
+      process.exit(1);
+    }
+
+    console.log('\nGenerating Argon2id password hash...');
     const passwordHash = await hashPassword(password);
     const referralCode = `ADM${generateReferralCode().slice(3)}`;
 
@@ -180,19 +252,17 @@ export async function bootstrapAdminCli(): Promise<void> {
     console.log(`Status:         ACTIVE`);
     console.log(`Referral Code:  ${referralCode}`);
     console.log('======================================================\n');
-
-    await mongoose.disconnect();
-  } catch (err: any) {
-    console.error('\n[FATAL] Bootstrap exception:', err);
+  } finally {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
-    process.exit(1);
-  } finally {
-    rl.close();
   }
 }
 
 if (require.main === module) {
-  bootstrapAdminCli();
+  bootstrapAdminCli().catch((err) => {
+    console.error('\n[FATAL EXCEPTION]', err.message);
+    process.exit(1);
+  });
 }
+

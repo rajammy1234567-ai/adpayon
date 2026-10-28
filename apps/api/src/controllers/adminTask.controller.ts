@@ -6,10 +6,12 @@ import {
   appInstallConfigSchema,
   videoWatchConfigSchema,
   articleReadConfigSchema,
+  youtubeLearningConfigSchema,
+  extractYouTubeVideoId,
   isSafePublicUrl,
 } from '@adpayon/shared';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { Campaign, Task, TaskCompletion, AdminAuditLog } from '../models';
+import { Campaign, Task, TaskCompletion, AdminAuditLog, WalletLedgerEntry } from '../models';
 import { env } from '../config/env';
 
 // Validation Schemas & Helpers
@@ -60,62 +62,78 @@ export function validateTaskCategoryAndConfigs(
     appInstallConfig?: any;
     videoWatchConfig?: any;
     articleReadConfig?: any;
+    youtubeLearningConfig?: any;
   },
   ctx: z.RefinementCtx
 ) {
   if (!category) return;
 
-  if (category === 'APP_INSTALL') {
+  if (category === 'APP_INSTALL' || category === 'APP_TESTING') {
     if (!configs.appInstallConfig) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'appInstallConfig is required for APP_INSTALL tasks',
+        message: 'appInstallConfig is required for app testing tasks',
         path: ['appInstallConfig'],
       });
     }
     if (configs.videoWatchConfig) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'videoWatchConfig must not be provided for APP_INSTALL tasks',
+        message: 'videoWatchConfig must not be provided for app testing tasks',
         path: ['videoWatchConfig'],
       });
     }
     if (configs.articleReadConfig) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'articleReadConfig must not be provided for APP_INSTALL tasks',
+        message: 'articleReadConfig must not be provided for app testing tasks',
         path: ['articleReadConfig'],
       });
     }
-    if (verificationMethod === 'FIRST_PARTY_ACTION' && configs.appInstallConfig?.attributionMethod !== 'IN_APP_FEEDBACK') {
+    if (configs.youtubeLearningConfig) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'APP_INSTALL tasks with signed postback or manual review cannot use FIRST_PARTY_ACTION verification. Use AUTHENTICATED_WEBHOOK, MANUAL_REVIEW, or select IN_APP_FEEDBACK.',
-        path: ['verificationMethod'],
+        message: 'youtubeLearningConfig must not be provided for app testing tasks',
+        path: ['youtubeLearningConfig'],
       });
     }
-    if (configs.appInstallConfig && verificationMethod) {
-      if (configs.appInstallConfig.attributionMethod === 'SIGNED_POSTBACK' && verificationMethod !== 'AUTHENTICATED_WEBHOOK') {
+  } else if (category === 'YOUTUBE_LEARNING') {
+    if (!configs.youtubeLearningConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'youtubeLearningConfig is required for YOUTUBE_LEARNING tasks',
+        path: ['youtubeLearningConfig'],
+      });
+    } else {
+      const ytUrl = configs.youtubeLearningConfig.youtubeUrl;
+      if (!ytUrl || !extractYouTubeVideoId(ytUrl).valid) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'verificationMethod must be AUTHENTICATED_WEBHOOK when attributionMethod is SIGNED_POSTBACK',
-          path: ['verificationMethod'],
+          message: 'A valid public YouTube video URL is required (e.g., https://www.youtube.com/watch?v=VIDEO_ID)',
+          path: ['youtubeLearningConfig', 'youtubeUrl'],
         });
       }
-      if (configs.appInstallConfig.attributionMethod === 'MANUAL_REVIEW' && verificationMethod !== 'MANUAL_REVIEW') {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'verificationMethod must be MANUAL_REVIEW when attributionMethod is MANUAL_REVIEW',
-          path: ['verificationMethod'],
-        });
-      }
-      if (configs.appInstallConfig.attributionMethod === 'IN_APP_FEEDBACK' && verificationMethod !== 'FIRST_PARTY_ACTION') {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'verificationMethod must be FIRST_PARTY_ACTION when attributionMethod is IN_APP_FEEDBACK',
-          path: ['verificationMethod'],
-        });
-      }
+    }
+    if (configs.appInstallConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'appInstallConfig must not be provided for YOUTUBE_LEARNING tasks',
+        path: ['appInstallConfig'],
+      });
+    }
+    if (configs.videoWatchConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'videoWatchConfig must not be provided for YOUTUBE_LEARNING tasks',
+        path: ['videoWatchConfig'],
+      });
+    }
+    if (configs.articleReadConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'articleReadConfig must not be provided for YOUTUBE_LEARNING tasks',
+        path: ['articleReadConfig'],
+      });
     }
   } else if (category === 'VIDEO_WATCH') {
     if (!configs.videoWatchConfig) {
@@ -139,6 +157,13 @@ export function validateTaskCategoryAndConfigs(
         path: ['articleReadConfig'],
       });
     }
+    if (configs.youtubeLearningConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'youtubeLearningConfig must not be provided for VIDEO_WATCH tasks',
+        path: ['youtubeLearningConfig'],
+      });
+    }
   } else if (category === 'ARTICLE_READ') {
     if (!configs.articleReadConfig) {
       ctx.addIssue({
@@ -159,6 +184,13 @@ export function validateTaskCategoryAndConfigs(
         code: z.ZodIssueCode.custom,
         message: 'videoWatchConfig must not be provided for ARTICLE_READ tasks',
         path: ['videoWatchConfig'],
+      });
+    }
+    if (configs.youtubeLearningConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'youtubeLearningConfig must not be provided for ARTICLE_READ tasks',
+        path: ['youtubeLearningConfig'],
       });
     }
   } else {
@@ -226,6 +258,8 @@ const createTaskSchema = z
       'APP_INSTALL',
       'VIDEO_WATCH',
       'ARTICLE_READ',
+      'YOUTUBE_LEARNING',
+      'APP_TESTING',
     ]),
     verificationMethod: z.enum(['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW']),
     rewardPoints: z.number().int().min(1, 'Reward points must be at least 1'),
@@ -237,6 +271,8 @@ const createTaskSchema = z
         minAncestryDepth: z.number().int().min(0).optional(),
         kycRequired: z.boolean().optional(),
         allowedStates: z.array(z.string()).optional(),
+        assignedUserIds: z.array(z.string()).optional(),
+        userGroups: z.array(z.string()).optional(),
       })
       .optional(),
     externalActionUrl: z.preprocess(
@@ -257,6 +293,7 @@ const createTaskSchema = z
     appInstallConfig: appInstallConfigSchema.optional(),
     videoWatchConfig: videoWatchConfigSchema.optional(),
     articleReadConfig: articleReadConfigSchema.optional(),
+    youtubeLearningConfig: youtubeLearningConfigSchema.optional(),
     expiresAt: z.preprocess(emptyToUndefined, z.string().datetime().optional()),
   })
   .superRefine((data, ctx) => {
@@ -277,6 +314,8 @@ const updateTaskSchema = z
         'APP_INSTALL',
         'VIDEO_WATCH',
         'ARTICLE_READ',
+        'YOUTUBE_LEARNING',
+        'APP_TESTING',
       ])
       .optional(),
     verificationMethod: z.enum(['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW']).optional(),
@@ -289,6 +328,8 @@ const updateTaskSchema = z
         minAncestryDepth: z.number().int().min(0).optional(),
         kycRequired: z.boolean().optional(),
         allowedStates: z.array(z.string()).optional(),
+        assignedUserIds: z.array(z.string()).optional(),
+        userGroups: z.array(z.string()).optional(),
       })
       .optional(),
     externalActionUrl: z.preprocess(
@@ -309,6 +350,7 @@ const updateTaskSchema = z
     appInstallConfig: appInstallConfigSchema.optional(),
     videoWatchConfig: videoWatchConfigSchema.optional(),
     articleReadConfig: articleReadConfigSchema.optional(),
+    youtubeLearningConfig: youtubeLearningConfigSchema.optional(),
     expiresAt: z.preprocess(emptyToUndefined, z.string().datetime().optional()),
   })
   .superRefine((data, ctx) => {
@@ -686,8 +728,23 @@ export async function createTask(req: AuthenticatedRequest, res: Response): Prom
     parsed.data.instructions ||
     parsed.data.title;
 
+  const taskPayload: any = { ...parsed.data };
+  if (taskPayload.category === 'YOUTUBE_LEARNING' && taskPayload.youtubeLearningConfig) {
+    if (!taskPayload.youtubeLearningConfig.videoId && taskPayload.youtubeLearningConfig.youtubeUrl) {
+      const extracted = extractYouTubeVideoId(taskPayload.youtubeLearningConfig.youtubeUrl);
+      if (extracted.valid && extracted.videoId) {
+        taskPayload.youtubeLearningConfig.videoId = extracted.videoId;
+      }
+    }
+    const duration =
+      taskPayload.youtubeLearningConfig.requiredDurationSeconds ||
+      taskPayload.youtubeLearningConfig.sessionDurationSeconds ||
+      60;
+    taskPayload.youtubeLearningConfig.requiredDurationSeconds = duration;
+  }
+
   const task = await Task.create({
-    ...parsed.data,
+    ...taskPayload,
     description: resolvedDescription,
     campaignId: campaign._id,
     status: 'DRAFT', // Always created in DRAFT
@@ -726,6 +783,7 @@ export async function createTask(req: AuthenticatedRequest, res: Response): Prom
         appInstallConfig: task.appInstallConfig,
         videoWatchConfig: task.videoWatchConfig,
         articleReadConfig: task.articleReadConfig,
+        youtubeLearningConfig: task.youtubeLearningConfig,
         expiresAt: task.expiresAt,
         createdAt: task.createdAt,
       },
@@ -797,6 +855,7 @@ export async function listTasks(req: AuthenticatedRequest, res: Response): Promi
           appInstallConfig: t.appInstallConfig,
           videoWatchConfig: t.videoWatchConfig,
           articleReadConfig: t.articleReadConfig,
+          youtubeLearningConfig: t.youtubeLearningConfig,
           expiresAt: t.expiresAt,
           createdAt: t.createdAt,
         };
@@ -912,7 +971,22 @@ export async function updateTask(req: AuthenticatedRequest, res: Response): Prom
     return;
   }
 
-  Object.assign(task, parsed.data);
+  const updatePayload: any = { ...parsed.data };
+  if (updatePayload.youtubeLearningConfig) {
+    if (!updatePayload.youtubeLearningConfig.videoId && updatePayload.youtubeLearningConfig.youtubeUrl) {
+      const extracted = extractYouTubeVideoId(updatePayload.youtubeLearningConfig.youtubeUrl);
+      if (extracted.valid && extracted.videoId) {
+        updatePayload.youtubeLearningConfig.videoId = extracted.videoId;
+      }
+    }
+    const duration =
+      updatePayload.youtubeLearningConfig.requiredDurationSeconds ||
+      updatePayload.youtubeLearningConfig.sessionDurationSeconds ||
+      (task.youtubeLearningConfig?.requiredDurationSeconds || 60);
+    updatePayload.youtubeLearningConfig.requiredDurationSeconds = duration;
+  }
+
+  Object.assign(task, updatePayload);
   await task.save();
 
   await AdminAuditLog.create({
@@ -939,6 +1013,7 @@ export async function updateTask(req: AuthenticatedRequest, res: Response): Prom
         appInstallConfig: task.appInstallConfig,
         videoWatchConfig: task.videoWatchConfig,
         articleReadConfig: task.articleReadConfig,
+        youtubeLearningConfig: task.youtubeLearningConfig,
         expiresAt: task.expiresAt,
         updatedAt: task.updatedAt,
       },
@@ -1035,6 +1110,69 @@ export async function publishTask(req: AuthenticatedRequest, res: Response): Pro
         error: {
           code: 'INCOMPLETE_TASK_CONFIG',
           message: 'Cannot publish task: Article title and content (at least 30 characters) are required for ARTICLE_READ tasks',
+        },
+      });
+      return;
+    }
+  } else if (task.category === 'VIDEO_WATCH') {
+    if (
+      !task.videoWatchConfig ||
+      !task.videoWatchConfig.videoUrl ||
+      !task.videoWatchConfig.requiredWatchSeconds ||
+      task.videoWatchConfig.requiredWatchSeconds < 5
+    ) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INCOMPLETE_TASK_CONFIG',
+          message: 'Cannot publish task: Valid video URL and watch duration (at least 5 seconds) are required for VIDEO_WATCH tasks',
+        },
+      });
+      return;
+    }
+  } else if (task.category === 'YOUTUBE_LEARNING') {
+    if (
+      !task.youtubeLearningConfig ||
+      !task.youtubeLearningConfig.youtubeUrl ||
+      !task.youtubeLearningConfig.videoId ||
+      !task.youtubeLearningConfig.requiredDurationSeconds ||
+      task.youtubeLearningConfig.requiredDurationSeconds < 5
+    ) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INCOMPLETE_TASK_CONFIG',
+          message: 'Cannot publish task: Valid YouTube video link and duration (at least 5 seconds) are required for YOUTUBE_LEARNING tasks',
+        },
+      });
+      return;
+    }
+    if (
+      !task.youtubeLearningConfig.comprehensionQuiz ||
+      !task.youtubeLearningConfig.comprehensionQuiz.question ||
+      task.youtubeLearningConfig.comprehensionQuiz.question.trim().length < 5 ||
+      !task.youtubeLearningConfig.comprehensionQuiz.options ||
+      task.youtubeLearningConfig.comprehensionQuiz.options.length < 2
+    ) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INCOMPLETE_TASK_CONFIG',
+          message: 'Cannot publish task: Content comprehension quiz with at least 2 options is required for YOUTUBE_LEARNING tasks',
+        },
+      });
+      return;
+    }
+  } else if (task.category === 'APP_INSTALL') {
+    if (
+      !task.appInstallConfig ||
+      (!task.appInstallConfig.packageName && !task.appInstallConfig.storeUrl)
+    ) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INCOMPLETE_TASK_CONFIG',
+          message: 'Cannot publish task: Target package name or store listing URL is required for APP_INSTALL tasks',
         },
       });
       return;
@@ -1214,11 +1352,38 @@ export async function reviewCompletion(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  const previousStatus = completion.status;
   completion.status = parsed.data.status;
   completion.adminReviewNotes = parsed.data.adminReviewNotes;
   completion.rejectionReason = parsed.data.rejectionReason;
   completion.reviewedBy = req.user!._id;
   await completion.save();
+
+  if (parsed.data.status === 'VERIFIED' && previousStatus !== 'VERIFIED') {
+    const existingLedger = await WalletLedgerEntry.findOne({
+      referenceEntity: 'TaskCompletion',
+      referenceId: completion._id,
+    });
+    if (!existingLedger) {
+      const task = await Task.findById(completion.taskId);
+      if (task) {
+        await Task.findByIdAndUpdate(task._id, { $inc: { completionsCount: 1 } });
+      }
+      await WalletLedgerEntry.create({
+        userId: completion.userId,
+        entryType: 'TASK_REWARD',
+        amountPaise: completion.rewardPoints,
+        pointsEquivalent: completion.rewardPoints,
+        status: 'CONFIRMED',
+        balanceBeforePaise: 0,
+        balanceAfterPaise: completion.rewardPoints,
+        referenceEntity: 'TaskCompletion',
+        referenceId: completion._id,
+        idempotencyKey: `admin-approval-${completion._id}`,
+        notes: `Admin approval reward for task "${task?.title || 'Task'}"`,
+      });
+    }
+  }
 
   await AdminAuditLog.create({
     adminId: req.user!._id,

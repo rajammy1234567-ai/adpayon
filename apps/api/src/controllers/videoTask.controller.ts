@@ -10,6 +10,7 @@ import {
   TaskEvent,
   VerificationEvidence,
   VideoPlaybackSession,
+  WalletLedgerEntry,
 } from '../models';
 import { env } from '../config/env';
 import { taskVerificationMutex, QueueOverloadError } from '../utils/keyedMutex';
@@ -1201,6 +1202,26 @@ export async function verifyVideoWatch(req: AuthenticatedRequest, res: Response)
               verificationMethod: 'FIRST_PARTY_ACTION',
               evidenceId: evidenceDocs[0]._id,
               completedAt: new Date(),
+            },
+          ],
+          { session: dbSession }
+        );
+
+        // Step 4b: Insert Wallet Ledger Entry (Reward)
+        await WalletLedgerEntry.create(
+          [
+            {
+              userId: user._id,
+              entryType: 'TASK_REWARD',
+              amountPaise: task.rewardPoints,
+              pointsEquivalent: task.rewardPoints,
+              status: 'CONFIRMED',
+              balanceBeforePaise: 0,
+              balanceAfterPaise: task.rewardPoints,
+              referenceEntity: 'TaskCompletion',
+              referenceId: completionDocs[0]._id,
+              idempotencyKey: `video-reward-${completionDocs[0]._id}`,
+              notes: `Video watch reward for "${task.title}"`,
             },
           ],
           { session: dbSession }

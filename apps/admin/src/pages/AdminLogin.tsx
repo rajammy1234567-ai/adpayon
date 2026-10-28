@@ -20,18 +20,22 @@ export const AdminLogin: React.FC = () => {
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
+
     setError(null);
     setIsLoading(true);
 
     try {
-      const data = await login(mobile, password);
-      if (data.mfaRequired) {
+      const data = await login(mobile.trim(), password, { timeoutMs: 15000 });
+      if (data && data.mfaRequired) {
         setMfaSessionToken(data.mfaSessionToken);
         setMaskedMobile(data.maskedMobile);
         setStep('MFA');
+      } else {
+        setError('Unexpected authentication response. Please verify credentials and try again.');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to authenticate administrator credentials');
+      setError(err.message || 'Failed to authenticate administrator credentials. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -39,14 +43,16 @@ export const AdminLogin: React.FC = () => {
 
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
+
     setError(null);
     setIsLoading(true);
 
     try {
-      await verifyMfa(mfaSessionToken, otp);
+      await verifyMfa(mfaSessionToken, otp.trim(), { timeoutMs: 15000 });
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Invalid or expired 2FA verification code');
+      setError(err.message || 'Invalid or expired 2FA verification code. Please try again.');
     } finally {
       setIsLoading(false);
     }

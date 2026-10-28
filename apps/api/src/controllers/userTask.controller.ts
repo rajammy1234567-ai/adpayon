@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import mongoose, { Types } from 'mongoose';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
+import { isValidAndroidPackageName } from '@adpayon/shared';
 import {
   Campaign,
   Task,
@@ -10,6 +11,7 @@ import {
   TaskCompletion,
   TaskEvent,
   VerificationEvidence,
+  WalletLedgerEntry,
 } from '../models';
 import { env } from '../config/env';
 import {
@@ -248,6 +250,23 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
     let eligible = true;
     let ineligibilityReason: string | undefined;
 
+    // Targeted user assignment check
+    if (t.targeting?.assignedUserIds && t.targeting.assignedUserIds.length > 0) {
+      const isAssigned = t.targeting.assignedUserIds.some(
+        (uid: any) => uid.toString() === user._id.toString()
+      );
+      if (!isAssigned) {
+        continue; // Exclusively visible to assigned users
+      }
+    }
+
+    if (t.targeting?.userGroups && t.targeting.userGroups.length > 0) {
+      const userGroup = (user.metadata as any)?.userGroup || 'DEFAULT';
+      if (!t.targeting.userGroups.includes(userGroup)) {
+        continue;
+      }
+    }
+
     if (t.targeting?.kycRequired && user.metadata?.kycStatus !== 'VERIFIED') {
       eligible = false;
       ineligibilityReason = 'KYC verification required';
@@ -305,6 +324,9 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
             storeUrl: t.appInstallConfig.storeUrl,
             attributionMethod: t.appInstallConfig.attributionMethod,
             conversionEvent: t.appInstallConfig.conversionEvent,
+            testingSteps: t.appInstallConfig.testingSteps,
+            feedbackQuestion: t.appInstallConfig.feedbackQuestion,
+            requiredTestingSeconds: t.appInstallConfig.requiredTestingSeconds,
           }
         : undefined,
       videoWatchConfig: t.videoWatchConfig
@@ -329,6 +351,25 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
                   question: t.articleReadConfig.comprehensionQuiz.question,
                   options: t.articleReadConfig.comprehensionQuiz.options,
                   // STRICT SECURITY: correctOptionIndex is intentionally OMITTED for clients!
+                }
+              : undefined,
+          }
+        : undefined,
+      youtubeLearningConfig: t.youtubeLearningConfig
+        ? {
+            youtubeUrl: t.youtubeLearningConfig.youtubeUrl,
+            videoId: t.youtubeLearningConfig.videoId,
+            videoTitle: t.youtubeLearningConfig.videoTitle,
+            requiredDurationSeconds: t.youtubeLearningConfig.requiredDurationSeconds,
+            instructions: t.youtubeLearningConfig.instructions,
+            educationalNotice:
+              t.youtubeLearningConfig.educationalNotice ||
+              'Educational learning session. ADPAYON verifies comprehension and learning session engagement, not YouTube view counts or platform metrics.',
+            hasQuiz: !!t.youtubeLearningConfig.comprehensionQuiz?.question,
+            quiz: t.youtubeLearningConfig.comprehensionQuiz
+              ? {
+                  question: t.youtubeLearningConfig.comprehensionQuiz.question,
+                  options: t.youtubeLearningConfig.comprehensionQuiz.options,
                 }
               : undefined,
           }
@@ -368,6 +409,20 @@ export async function startTask(req: AuthenticatedRequest, res: Response): Promi
       error: { code: 'TASK_NOT_AVAILABLE', message: 'Task is not currently available' },
     });
     return;
+  }
+
+  // 1b. Check targeted user assignment
+  if (task.targeting?.assignedUserIds && task.targeting.assignedUserIds.length > 0) {
+    const isAssigned = task.targeting.assignedUserIds.some(
+      (uid: any) => uid.toString() === user._id.toString()
+    );
+    if (!isAssigned) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'NOT_ASSIGNED', message: 'This task is assigned to specific users' },
+      });
+      return;
+    }
   }
 
   const campaign = await Campaign.findById(task.campaignId);
@@ -971,6 +1026,26 @@ export async function verifyFirstPartyAction(req: AuthenticatedRequest, res: Res
             { session }
           );
           insertCompletionMs = performance.now() - t3;
+
+          await WalletLedgerEntry.create(
+            [
+              {
+                userId: user._id,
+                entryType: 'TASK_REWARD',
+                amountPaise: task.rewardPoints,
+                pointsEquivalent: task.rewardPoints,
+                status: 'CONFIRMED',
+                balanceBeforePaise: 0,
+                balanceAfterPaise: task.rewardPoints,
+                referenceEntity: 'TaskCompletion',
+                referenceId: completionDocs[0]._id,
+                idempotencyKey: `fp-task-reward-${completionDocs[0]._id}`,
+                notes: `Reward for completing "${task.title}"`,
+              },
+            ],
+            { session }
+          );
+
           return completionDocs[0];
         };
 
@@ -1404,6 +1479,8 @@ export async function getTaskStatus(req: AuthenticatedRequest, res: Response): P
         isExpired,
         hasOpenedStore: Boolean((assignment as any).hasOpenedStore),
         storeVisitedAt: (assignment as any).storeVisitedAt,
+        initialInstallStatus: (assignment as any).initialInstallStatus,
+        initialPackageName: (assignment as any).initialPackageName,
       },
     },
   });
@@ -1412,7 +1489,7 @@ export async function getTaskStatus(req: AuthenticatedRequest, res: Response): P
 /**
  * POST /api/tasks/:id/store-visit
  * Authoritative server tracking of user visiting official store listing.
- * Strictly tracking information only - NEVER reward verification evidence.
+ * Persists target package initial installation baseline for genuine install verification.
  */
 export async function recordStoreVisit(req: AuthenticatedRequest, res: Response): Promise<void> {
   const { id } = req.params;
@@ -1426,31 +1503,91 @@ export async function recordStoreVisit(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  const task = await Task.findById(id);
+  if (!task || task.status !== 'PUBLISHED') {
+    res.status(404).json({
+      success: false,
+      error: { code: 'TASK_NOT_FOUND', message: 'Task not found or not published' },
+    });
+    return;
+  }
+
   // Find active assignment for this task and user
-  const assignment = await TaskAssignment.findOne({
+  let assignment = await TaskAssignment.findOne({
     taskId: new Types.ObjectId(id),
     userId: user._id,
     status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
     expiresAt: { $gt: new Date() },
   });
 
+  // If no active assignment exists, create one now
   if (!assignment) {
-    res.status(404).json({
-      success: false,
-      error: { code: 'ASSIGNMENT_NOT_FOUND', message: 'No active assignment found to record store visit' },
+    const startOfToday = getStartOfTodayUtc();
+    const completedTodayCount = await TaskCompletion.countDocuments({
+      taskId: task._id,
+      userId: user._id,
+      completedAt: { $gte: startOfToday },
     });
-    return;
+
+    if (completedTodayCount >= task.dailyCapPerUser) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'DAILY_CAP_REACHED',
+          message: `You have reached your daily limit of ${task.dailyCapPerUser} completion(s) for this task`,
+        },
+      });
+      return;
+    }
+
+    assignment = await TaskAssignment.create({
+      taskId: task._id,
+      campaignId: task.campaignId,
+      userId: user._id,
+      clickId: `clk_${crypto.randomBytes(16).toString('hex')}`,
+      status: 'IN_PROGRESS',
+      assignedAt: new Date(),
+      expiresAt: new Date(Date.now() + 2 * 3600 * 1000),
+      dwellTimeAccumulatedSeconds: 0,
+    });
   }
 
   const visitedAt = new Date();
   assignment.hasOpenedStore = true;
   assignment.storeVisitedAt = visitedAt;
+
+  // Validate target package matching if provided
+  if (req.body?.packageName && task.appInstallConfig?.packageName) {
+    if (String(req.body.packageName).trim() !== task.appInstallConfig.packageName.trim()) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'PACKAGE_MISMATCH',
+          message: `Store visit package "${req.body.packageName}" does not match configured target package "${task.appInstallConfig.packageName}"`,
+        },
+      });
+      return;
+    }
+  }
+
+  // Persist target package initial check baseline (preserve pre-existing INSTALLED state)
+  if (
+    req.body?.initialInstallStatus &&
+    ['NOT_INSTALLED', 'INSTALLED', 'UNAVAILABLE'].includes(req.body.initialInstallStatus)
+  ) {
+    if (assignment.initialInstallStatus !== 'INSTALLED') {
+      assignment.initialInstallStatus = req.body.initialInstallStatus;
+      assignment.initialPackageName = req.body.packageName ? String(req.body.packageName).trim() : task.appInstallConfig?.packageName;
+      assignment.initialInstallCheckedAt = visitedAt;
+    }
+  }
+
   if (assignment.status === 'ASSIGNED') {
     assignment.status = 'IN_PROGRESS';
   }
   await assignment.save();
 
-  // Log immutable tracking event (strictly tracking only, never completion/reward)
+  // Log immutable tracking event
   await TaskEvent.create({
     assignmentId: assignment._id,
     taskId: assignment.taskId,
@@ -1461,7 +1598,9 @@ export async function recordStoreVisit(req: AuthenticatedRequest, res: Response)
       platform: 'ANDROID',
       store: 'GOOGLE_PLAY',
       action: 'USER_OPENED_STORE',
-      note: 'Authoritative store visit tracking - not reward verification evidence',
+      initialInstallStatus: assignment.initialInstallStatus,
+      initialPackageName: assignment.initialPackageName,
+      note: 'Authoritative store visit and baseline package status tracking',
     },
     ipAddress: req.ip || '127.0.0.1',
     userAgent: req.headers['user-agent'],
@@ -1474,8 +1613,357 @@ export async function recordStoreVisit(req: AuthenticatedRequest, res: Response)
       assignmentId: assignment._id.toString(),
       hasOpenedStore: true,
       storeVisitedAt: visitedAt,
+      initialInstallStatus: assignment.initialInstallStatus,
+      initialPackageName: assignment.initialPackageName,
     },
   });
+}
+
+/**
+ * POST /api/tasks/:id/verify-install
+ * Validates genuine fresh package installation on Android.
+ * Completes the task and credits promotional reward points exactly once.
+ */
+export async function verifyAppInstall(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const user = req.user!;
+  const { packageName } = req.body;
+
+  if (!Types.ObjectId.isValid(id)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'Invalid task ID format' },
+    });
+    return;
+  }
+
+  if (!packageName || typeof packageName !== 'string' || !isValidAndroidPackageName(packageName.trim())) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PACKAGE_NAME', message: 'A valid Android package name is required' },
+    });
+    return;
+  }
+
+  const task = await Task.findById(id);
+  if (!task || task.status !== 'PUBLISHED') {
+    res.status(404).json({
+      success: false,
+      error: { code: 'TASK_NOT_FOUND', message: 'Task is not available or not published' },
+    });
+    return;
+  }
+
+  if (task.category !== 'APP_INSTALL') {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_TASK_CATEGORY', message: 'This endpoint is strictly for app installation tasks' },
+    });
+    return;
+  }
+
+  if (!task.appInstallConfig || !task.appInstallConfig.packageName) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'CONFIG_MISSING', message: 'Task is missing required appInstallConfig.packageName' },
+    });
+    return;
+  }
+
+  // Validate submitted package matches configured package
+  if (task.appInstallConfig.packageName.trim() !== packageName.trim()) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'PACKAGE_MISMATCH',
+        message: `Submitted package "${packageName}" does not match configured target package "${task.appInstallConfig.packageName}"`,
+      },
+    });
+    return;
+  }
+
+  if (task.completionsCount >= task.totalCap) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'CAP_EXHAUSTED', message: 'This task has reached its global completion cap' },
+    });
+    return;
+  }
+
+  if (task.expiresAt && task.expiresAt <= new Date()) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'TASK_EXPIRED', message: 'This task has expired' },
+    });
+    return;
+  }
+
+  // Daily cap per user check
+  const startOfToday = getStartOfTodayUtc();
+  const completedTodayCount = await TaskCompletion.countDocuments({
+    taskId: task._id,
+    userId: user._id,
+    completedAt: { $gte: startOfToday },
+  });
+
+  if (completedTodayCount >= task.dailyCapPerUser) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'DAILY_CAP_REACHED',
+        message: `You have reached your daily limit of ${task.dailyCapPerUser} completion(s) for this task`,
+      },
+    });
+    return;
+  }
+
+  // Targeting checks
+  if (task.targeting?.kycRequired && user.metadata?.kycStatus !== 'VERIFIED') {
+    res.status(403).json({
+      success: false,
+      error: { code: 'KYC_REQUIRED', message: 'This task requires completed KYC verification' },
+    });
+    return;
+  }
+
+  if (
+    task.targeting?.minAncestryDepth &&
+    task.targeting.minAncestryDepth > 0 &&
+    (!user.ancestors || user.ancestors.length < task.targeting.minAncestryDepth)
+  ) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'TARGETING_MISMATCH', message: 'User does not meet task upline requirements' },
+    });
+    return;
+  }
+
+  // Assignment check
+  const assignment = await TaskAssignment.findOne({
+    taskId: task._id,
+    userId: user._id,
+    status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!assignment) {
+    const existingCompletion = await TaskCompletion.findOne({
+      taskId: task._id,
+      userId: user._id,
+    });
+    if (existingCompletion) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'TASK_ALREADY_COMPLETED', message: 'You have already completed this app install task' },
+      });
+      return;
+    }
+
+    res.status(404).json({
+      success: false,
+      error: { code: 'ASSIGNMENT_NOT_FOUND', message: 'No active assignment found for this task' },
+    });
+    return;
+  }
+
+  // Must have opened store listing from AdPayOn
+  if (!assignment.hasOpenedStore) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'STORE_VISIT_REQUIRED', message: 'Google Play Store listing must be opened through AdPayOn first' },
+    });
+    return;
+  }
+
+  // Check initial baseline installation result
+  if (assignment.initialInstallStatus === 'INSTALLED') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'PREINSTALLED_APP',
+        message: 'Already installed — new-install reward unavailable',
+      },
+    });
+    return;
+  }
+
+  if (assignment.initialInstallStatus !== 'NOT_INSTALLED') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INSTALL_BASELINE_MISSING',
+        message: 'Initial package check baseline must be recorded as NOT_INSTALLED before store launch',
+      },
+    });
+    return;
+  }
+
+  try {
+    await taskVerificationMutex.run(task._id.toString(), async () => {
+      // Re-check duplicate inside mutex
+      const existingCompletion = await TaskCompletion.findOne({
+        taskId: task._id,
+        userId: user._id,
+      });
+
+      if (existingCompletion) {
+        res.status(409).json({
+          success: false,
+          error: { code: 'TASK_ALREADY_COMPLETED', message: 'You have already completed this app install task' },
+        });
+        return;
+      }
+
+      const dbSession = await mongoose.startSession();
+      try {
+        let completionResult: any = null;
+        await dbSession.withTransaction(async () => {
+          // 1. Mark assignment completed
+          const updatedAssignment = await TaskAssignment.findOneAndUpdate(
+            { _id: assignment._id, status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } },
+            {
+              $set: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+              },
+            },
+            { session: dbSession, returnDocument: 'after' }
+          );
+
+          if (!updatedAssignment) {
+            throw new TaskVerificationError(400, 'ASSIGNMENT_STATE_INVALID', 'Assignment already completed or expired');
+          }
+
+          // 2. Atomically reserve cap
+          const updatedTask = await Task.findOneAndUpdate(
+            { _id: task._id, status: 'PUBLISHED', $expr: { $lt: ['$completionsCount', '$totalCap'] } },
+            { $inc: { completionsCount: 1 } },
+            { session: dbSession, returnDocument: 'after' }
+          );
+
+          if (!updatedTask) {
+            throw new TaskVerificationError(400, 'CAP_EXHAUSTED', 'Global completion cap exhausted');
+          }
+
+          // 3. Create verification evidence
+          const evidenceDocs = await VerificationEvidence.create(
+            [
+              {
+                assignmentId: updatedAssignment._id,
+                taskId: task._id,
+                userId: user._id,
+                evidenceType: 'CLIENT_REPORTED_PACKAGE_PRESENCE',
+                signatureVerified: false,
+                rawPayload: {
+                  packageName: packageName.trim(),
+                  initialInstallStatus: assignment.initialInstallStatus,
+                  returnInstallStatus: 'INSTALLED',
+                  attributionNotice:
+                    'Client-reported package presence via Android PackageManager. Not proof of Play Store acquisition or internal app activity.',
+                  verifiedAt: new Date().toISOString(),
+                },
+                evaluatedAt: new Date(),
+              },
+            ],
+            { session: dbSession }
+          );
+
+          // 4. Create task completion
+          const completionDocs = await TaskCompletion.create(
+            [
+              {
+                taskId: task._id,
+                campaignId: task.campaignId,
+                userId: user._id,
+                assignmentId: updatedAssignment._id,
+                clickId: updatedAssignment.clickId,
+                rewardPoints: task.rewardPoints,
+                verificationMethod: 'FIRST_PARTY_ACTION',
+                status: 'VERIFIED',
+                completedAt: new Date(),
+                evidenceId: evidenceDocs[0]._id,
+              },
+            ],
+            { session: dbSession }
+          );
+
+          // 5. Credit promotional reward points to wallet ledger (Database-backed idempotency)
+          await WalletLedgerEntry.create(
+            [
+              {
+                userId: user._id,
+                entryType: 'TASK_REWARD',
+                amountPaise: task.rewardPoints,
+                pointsEquivalent: task.rewardPoints,
+                status: 'CONFIRMED',
+                balanceBeforePaise: 0,
+                balanceAfterPaise: task.rewardPoints,
+                referenceEntity: 'TaskCompletion',
+                referenceId: completionDocs[0]._id,
+                idempotencyKey: `app-install-${assignment._id}`,
+                notes: `App install reward for "${task.title}" (${packageName.trim()})`,
+              },
+            ],
+            { session: dbSession }
+          );
+
+          // 6. Create immutable task event
+          await TaskEvent.create(
+            [
+              {
+                assignmentId: updatedAssignment._id,
+                taskId: task._id,
+                userId: user._id,
+                eventType: 'VERIFY_SUCCESS',
+                payload: {
+                  action: 'APP_INSTALL_VERIFIED',
+                  packageName: packageName.trim(),
+                  rewardPoints: task.rewardPoints,
+                  completionId: completionDocs[0]._id.toString(),
+                  status: 'VERIFIED',
+                },
+                ipAddress: req.ip || '127.0.0.1',
+              },
+            ],
+            { session: dbSession }
+          );
+
+          completionResult = completionDocs[0];
+        });
+
+        res.status(200).json({
+          success: true,
+          data: {
+            status: completionResult.status,
+            rewardPoints: task.rewardPoints,
+            completionId: completionResult._id.toString(),
+            message: `App installation verified! +${task.rewardPoints} promotional points credited to your balance.`,
+          },
+        });
+      } finally {
+        await dbSession.endSession();
+      }
+    });
+  } catch (err: any) {
+    if (err instanceof TaskVerificationError) {
+      res.status(err.statusCode).json({
+        success: false,
+        error: { code: err.code, message: err.message },
+      });
+      return;
+    }
+    if (err instanceof QueueOverloadError) {
+      res.status(429).json({
+        success: false,
+        error: { code: 'QUEUE_OVERLOAD', message: 'Too many concurrent requests. Please try again shortly.' },
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message || 'Installation verification failed' },
+    });
+  }
 }
 
 /**
@@ -1544,6 +2032,20 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
     return;
   }
 
+  // Optional partner completion code check
+  if (task.appInstallConfig?.completionCode && task.appInstallConfig.completionCode.trim() !== '') {
+    const submittedCode = (req.body.completionCode || '').trim();
+    if (submittedCode !== task.appInstallConfig.completionCode.trim()) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_COMPLETION_CODE', message: 'Invalid partner completion code entered' },
+      });
+      return;
+    }
+  }
+
+  const isManualReview = task.appInstallConfig?.attributionMethod === 'MANUAL_REVIEW';
+
   const mutexKey = `${task._id.toString()}:${user._id.toString()}`;
   try {
     await taskVerificationMutex.run(task._id.toString(), async () => {
@@ -1588,10 +2090,16 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
       try {
         let completionResult: any = null;
         await dbSession.withTransaction(async () => {
-          // 1. Mark assignment completed
+          // 1. Mark assignment status
           const updatedAssignment = await TaskAssignment.findOneAndUpdate(
             { _id: assignment._id, status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } },
-            { $set: { status: 'COMPLETED', completedAt: new Date(), hasOpenedStore: true } },
+            {
+              $set: {
+                status: isManualReview ? 'PENDING_REVIEW' : 'COMPLETED',
+                completedAt: isManualReview ? undefined : new Date(),
+                hasOpenedStore: true,
+              },
+            },
             { session: dbSession, returnDocument: 'after' }
           );
 
@@ -1599,15 +2107,17 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
             throw new TaskVerificationError(400, 'ASSIGNMENT_STATE_INVALID', 'Assignment already completed or invalid');
           }
 
-          // 2. Reserve cap atomically
-          const updatedTask = await Task.findOneAndUpdate(
-            { _id: task._id, status: 'PUBLISHED', $expr: { $lt: ['$completionsCount', '$totalCap'] } },
-            { $inc: { completionsCount: 1 } },
-            { session: dbSession, returnDocument: 'after' }
-          );
+          // 2. Reserve cap atomically if verified immediately
+          if (!isManualReview) {
+            const updatedTask = await Task.findOneAndUpdate(
+              { _id: task._id, status: 'PUBLISHED', $expr: { $lt: ['$completionsCount', '$totalCap'] } },
+              { $inc: { completionsCount: 1 } },
+              { session: dbSession, returnDocument: 'after' }
+            );
 
-          if (!updatedTask) {
-            throw new TaskVerificationError(400, 'CAP_EXHAUSTED', 'Global completion cap exhausted');
+            if (!updatedTask) {
+              throw new TaskVerificationError(400, 'CAP_EXHAUSTED', 'Global completion cap exhausted');
+            }
           }
 
           // 3. Create verification evidence
@@ -1623,6 +2133,7 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
                   feedback: feedback.trim(),
                   rating: typeof rating === 'number' ? rating : 5,
                   answer: typeof answer === 'string' ? answer.trim() : undefined,
+                  completionCode: req.body.completionCode ? String(req.body.completionCode).trim() : undefined,
                   submittedAt: new Date().toISOString(),
                 },
                 evaluatedAt: new Date(),
@@ -1632,6 +2143,7 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
           );
 
           // 4. Create task completion
+          const completionStatus = isManualReview ? 'PENDING_REVIEW' : 'VERIFIED';
           const completionDocs = await TaskCompletion.create(
             [
               {
@@ -1641,8 +2153,8 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
                 assignmentId: updatedAssignment._id,
                 clickId: updatedAssignment.clickId,
                 rewardPoints: task.rewardPoints,
-                verificationMethod: 'FIRST_PARTY_ACTION',
-                status: 'VERIFIED',
+                verificationMethod: isManualReview ? 'MANUAL_REVIEW' : 'FIRST_PARTY_ACTION',
+                status: completionStatus,
                 completedAt: new Date(),
                 evidenceId: evidenceDocs[0]._id,
               },
@@ -1650,18 +2162,41 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
             { session: dbSession }
           );
 
-          // 5. Create immutable task event
+          // 5. Credit promotional points to wallet ledger if verified immediately
+          if (!isManualReview) {
+            await WalletLedgerEntry.create(
+              [
+                {
+                  userId: user._id,
+                  entryType: 'TASK_REWARD',
+                  amountPaise: task.rewardPoints,
+                  pointsEquivalent: task.rewardPoints,
+                  status: 'CONFIRMED',
+                  balanceBeforePaise: 0,
+                  balanceAfterPaise: task.rewardPoints,
+                  referenceEntity: 'TaskCompletion',
+                  referenceId: completionDocs[0]._id,
+                  idempotencyKey: `app-test-${completionDocs[0]._id}`,
+                  notes: `App testing reward for "${task.title}"`,
+                },
+              ],
+              { session: dbSession }
+            );
+          }
+
+          // 6. Create immutable task event
           await TaskEvent.create(
             [
               {
                 assignmentId: updatedAssignment._id,
                 taskId: task._id,
                 userId: user._id,
-                eventType: 'VERIFY_SUCCESS',
+                eventType: isManualReview ? 'SUBMIT' : 'VERIFY_SUCCESS',
                 payload: {
                   action: 'APP_FEEDBACK_SUBMITTED',
                   rewardPoints: task.rewardPoints,
                   completionId: completionDocs[0]._id.toString(),
+                  status: completionStatus,
                 },
                 ipAddress: req.ip || '127.0.0.1',
               },
@@ -1675,10 +2210,12 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
         res.status(200).json({
           success: true,
           data: {
-            status: 'VERIFIED',
+            status: completionResult.status,
             rewardPoints: task.rewardPoints,
             completionId: completionResult._id.toString(),
-            message: `Thank you for your feedback! +${task.rewardPoints} promotional points credited to your balance.`,
+            message: isManualReview
+              ? 'Thank you! Your app testing submission has been sent to the admin review queue.'
+              : `Thank you for your feedback! +${task.rewardPoints} promotional points credited to your balance.`,
           },
         });
       } finally {

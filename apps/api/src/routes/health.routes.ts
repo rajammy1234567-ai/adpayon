@@ -14,6 +14,8 @@ healthRouter.get('/health', (_req: Request, res: Response) => {
     status: 'ok',
     service: 'adpayon-api',
     version: '1.0.0',
+    commit: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || null,
+    branch: process.env.RENDER_GIT_BRANCH || null,
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
   });

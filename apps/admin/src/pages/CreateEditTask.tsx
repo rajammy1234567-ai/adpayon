@@ -22,6 +22,8 @@ import {
   MessageSquare,
   Star,
   Download,
+  Users,
+  Target,
 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
 import { Campaign, TaskCategory, VerificationMethod } from '../types';
@@ -89,6 +91,26 @@ export const CreateEditTask: React.FC = () => {
   const [storeUrl, setStoreUrl] = useState('');
   const [testingSteps, setTestingSteps] = useState('');
   const [feedbackQuestion, setFeedbackQuestion] = useState('');
+  const [appAttributionMethod, setAppAttributionMethod] = useState<'IN_APP_FEEDBACK' | 'MANUAL_REVIEW'>('IN_APP_FEEDBACK');
+  const [requiredTestingSeconds, setRequiredTestingSeconds] = useState<number>(60);
+  const [completionCode, setCompletionCode] = useState('');
+
+  // YouTube Video Learning Config
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [youtubeSessionDuration, setYoutubeSessionDuration] = useState<number>(60);
+  const [enableYouTubeQuiz, setEnableYouTubeQuiz] = useState(true);
+  const [youtubeQuizQuestion, setYoutubeQuizQuestion] = useState('');
+  const [youtubeQuizOptions, setYoutubeQuizOptions] = useState<string[]>([
+    'Never share the OTP with anyone under any circumstances',
+    'Share the OTP only if the caller claims to be official bank staff',
+    'Email the OTP to the caller',
+    'Share only the last 2 digits of the OTP',
+  ]);
+  const [youtubeQuizCorrectOptionIndex, setYoutubeQuizCorrectOptionIndex] = useState<number>(0);
+
+  // Task Targeting & Assignment Config
+  const [assignedUserIdsText, setAssignedUserIdsText] = useState('');
+  const [userGroupsText, setUserGroupsText] = useState('');
 
   // View state
   const [activeTab, setActiveTab] = useState<'FORM' | 'PREVIEW'>('FORM');
@@ -200,9 +222,63 @@ export const CreateEditTask: React.FC = () => {
     setStoreUrl('https://play.google.com/store/apps/details?id=com.budget.planner.safe');
     setTestingSteps('1. Open app and explore dashboard.\n2. Check income vs expense chart readability.\n3. Verify response time on your phone.');
     setFeedbackQuestion('How easy was it to navigate the main budget overview?');
+    setRequiredTestingSeconds(60);
+    setAppAttributionMethod('IN_APP_FEEDBACK');
+    setCompletionCode('');
     setKycRequired(false);
     setMinAncestryDepth(0);
     setExternalActionUrl('');
+  };
+
+  const fillSampleYouTubeDefaults = () => {
+    setTitle('Financial Education: Mobile Banking & Fraud Awareness');
+    setDescription('Learn how digital payment authentication protects your account from unauthorized access.');
+    setInstructions(
+      '1. Watch the authorized educational learning video for at least 45 seconds.\n2. Review fraud protection best practices.\n3. Answer the comprehension quiz question to claim promotional reward points.'
+    );
+    setCategory('YOUTUBE_LEARNING');
+    setVerificationMethod('FIRST_PARTY_ACTION');
+    setRewardPoints(250);
+    setTotalCap(1000);
+    setDailyCapPerUser(1);
+    setDwellTimeSeconds(45);
+    setYoutubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    setYoutubeSessionDuration(45);
+    setEnableYouTubeQuiz(true);
+    setYoutubeQuizQuestion('What should you do when receiving an unexpected OTP verification request?');
+    setYoutubeQuizOptions([
+      'Never share the OTP with anyone under any circumstances',
+      'Share the OTP only if the caller claims to be official bank security',
+      'Share the OTP to claim an unexpected cash prize',
+      'Enter the OTP on any link received via SMS',
+    ]);
+    setYoutubeQuizCorrectOptionIndex(0);
+    setKycRequired(false);
+    setMinAncestryDepth(0);
+    setExternalActionUrl('');
+  };
+
+  const extractYouTubeId = (url: string) => {
+    if (!url) return '';
+    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
+    const match = url.match(regExp);
+    return match && match[1] ? match[1] : '';
+  };
+
+  const handleStoreUrlChange = (val: string) => {
+    setStoreUrl(val);
+    // Auto-detect Android package identifier from Google Play URL
+    const playMatch = val.match(/(?:play\.google\.com\/store\/apps\/details\?.*?id=)([a-zA-Z0-9._]+)/i);
+    if (playMatch && playMatch[1]) {
+      setPackageName(playMatch[1]);
+      clearFieldError('packageName');
+    }
+    // Auto-detect Apple App Store identifier from iOS App Store URL
+    const iosMatch = val.match(/apps\.apple\.com\/(?:[a-zA-Z-]+\/)?app\/(?:[^\/]+\/)?id(\d+)/i);
+    if (iosMatch && iosMatch[1] && !packageName) {
+      setPackageName(`ios.app.${iosMatch[1]}`);
+      clearFieldError('packageName');
+    }
   };
 
   useEffect(() => {
@@ -230,8 +306,16 @@ export const CreateEditTask: React.FC = () => {
             setTotalCap(t.totalCap);
             setDailyCapPerUser(t.dailyCapPerUser);
             setDwellTimeSeconds(t.dwellTimeSeconds);
-            setMinAncestryDepth(t.targeting?.minAncestryDepth || 0);
-            setKycRequired(!!t.targeting?.kycRequired);
+            if (t.targeting) {
+              setMinAncestryDepth(t.targeting.minAncestryDepth || 0);
+              setKycRequired(!!t.targeting.kycRequired);
+              if (t.targeting.assignedUserIds) {
+                setAssignedUserIdsText(t.targeting.assignedUserIds.join(', '));
+              }
+              if (t.targeting.userGroups) {
+                setUserGroupsText(t.targeting.userGroups.join(', '));
+              }
+            }
             setExternalActionUrl(t.externalActionUrl || '');
             setInstructions(t.instructions || '');
             if (t.expiresAt) {
@@ -271,12 +355,36 @@ export const CreateEditTask: React.FC = () => {
               }
             }
 
+            if (t.youtubeLearningConfig) {
+              setYoutubeUrl(t.youtubeLearningConfig.youtubeUrl || '');
+              setYoutubeSessionDuration(
+                t.youtubeLearningConfig.requiredDurationSeconds ||
+                  t.youtubeLearningConfig.sessionDurationSeconds ||
+                  60
+              );
+              if (t.youtubeLearningConfig.comprehensionQuiz) {
+                setEnableYouTubeQuiz(true);
+                setYoutubeQuizQuestion(t.youtubeLearningConfig.comprehensionQuiz.question || '');
+                setYoutubeQuizOptions(t.youtubeLearningConfig.comprehensionQuiz.options || ['', '', '', '']);
+                setYoutubeQuizCorrectOptionIndex(t.youtubeLearningConfig.comprehensionQuiz.correctOptionIndex || 0);
+              } else {
+                setEnableYouTubeQuiz(false);
+              }
+            }
+
             if (t.appInstallConfig) {
               setAppName(t.appInstallConfig.appName || '');
               setPackageName(t.appInstallConfig.packageName || '');
               setStoreUrl(t.appInstallConfig.storeUrl || '');
               setTestingSteps(t.appInstallConfig.testingSteps || '');
               setFeedbackQuestion(t.appInstallConfig.feedbackQuestion || '');
+              setCompletionCode(t.appInstallConfig.completionCode || '');
+              setRequiredTestingSeconds(t.appInstallConfig.requiredTestingSeconds || 60);
+              if (t.appInstallConfig.attributionMethod === 'MANUAL_REVIEW') {
+                setAppAttributionMethod('MANUAL_REVIEW');
+              } else {
+                setAppAttributionMethod('IN_APP_FEEDBACK');
+              }
             }
           }
         }
@@ -315,6 +423,15 @@ export const CreateEditTask: React.FC = () => {
       return copy;
     });
     clearFieldError('videoQuizOptions');
+  };
+
+  const handleYouTubeOptionChange = (index: number, val: string) => {
+    setYoutubeQuizOptions((prev) => {
+      const copy = [...prev];
+      copy[index] = val;
+      return copy;
+    });
+    clearFieldError('youtubeQuizOptions');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -373,7 +490,26 @@ export const CreateEditTask: React.FC = () => {
           errs.videoQuizCorrectOptionIndex = 'Correct answer must point to an active option';
         }
       }
-    } else if (category === 'APP_INSTALL') {
+    } else if (category === 'YOUTUBE_LEARNING') {
+      if (!youtubeUrl.trim() || !extractYouTubeId(youtubeUrl.trim())) {
+        errs.youtubeUrl = 'Valid YouTube video URL is required (e.g., https://www.youtube.com/watch?v=VIDEO_ID)';
+      }
+      if (youtubeSessionDuration < 5) {
+        errs.youtubeSessionDuration = 'Session duration must be at least 5 seconds';
+      }
+      if (enableYouTubeQuiz) {
+        if (!youtubeQuizQuestion.trim() || youtubeQuizQuestion.trim().length < 5) {
+          errs.youtubeQuizQuestion = 'Comprehension quiz question must contain at least 5 characters';
+        }
+        const validOpts = youtubeQuizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
+        if (validOpts.length < 2) {
+          errs.youtubeQuizOptions = 'At least 2 non-empty quiz options are required';
+        }
+        if (youtubeQuizCorrectOptionIndex >= validOpts.length) {
+          errs.youtubeQuizCorrectOptionIndex = 'Correct answer must point to an active option';
+        }
+      }
+    } else if (category === 'APP_INSTALL' || category === 'APP_TESTING') {
       if (!packageName.trim() || packageName.trim().length < 3) {
         errs.packageName = 'Application package name is required (e.g., com.example.app)';
       }
@@ -430,26 +566,76 @@ export const CreateEditTask: React.FC = () => {
       };
     }
 
+    let youtubeLearningConfig: any = undefined;
+    if (category === 'YOUTUBE_LEARNING') {
+      const validOpts = youtubeQuizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
+      const ytId = extractYouTubeId(youtubeUrl.trim());
+      youtubeLearningConfig = {
+        youtubeUrl: youtubeUrl.trim(),
+        videoId: ytId,
+        videoTitle: title.trim(),
+        requiredDurationSeconds: Number(youtubeSessionDuration) || 60,
+        sessionDurationSeconds: Number(youtubeSessionDuration) || 60,
+        instructions: instructions.trim() || undefined,
+        educationalNotice:
+          'Educational video learning. Rewards are granted exclusively for verified comprehension quiz completion, not YouTube view counts or platform metrics.',
+        comprehensionQuiz:
+          enableYouTubeQuiz && youtubeQuizQuestion.trim() && validOpts.length >= 2
+            ? {
+                question: youtubeQuizQuestion.trim(),
+                options: validOpts,
+                correctOptionIndex: Math.min(youtubeQuizCorrectOptionIndex, validOpts.length - 1),
+              }
+            : undefined,
+      };
+    }
+
     let appInstallConfig: any = undefined;
-    if (category === 'APP_INSTALL') {
+    if (category === 'APP_INSTALL' || category === 'APP_TESTING') {
       appInstallConfig = {
         appName: appName.trim() || title.trim(),
         packageName: packageName.trim() || 'com.example.app',
         storeUrl: storeUrl.trim() || undefined,
-        attributionMethod: 'IN_APP_FEEDBACK',
+        platform: 'ANDROID',
+        attributionMethod: appAttributionMethod,
+        conversionEvent: 'FIRST_OPEN',
         testingSteps: testingSteps.trim() || undefined,
         feedbackQuestion: feedbackQuestion.trim() || undefined,
+        requiredTestingSeconds: Number(requiredTestingSeconds) || 60,
+        completionCode: completionCode.trim() || undefined,
       };
     }
 
-    const isFirstParty = category === 'ARTICLE_READ' || category === 'VIDEO_WATCH' || category === 'APP_INSTALL';
+    const isFirstParty =
+      category === 'ARTICLE_READ' ||
+      category === 'VIDEO_WATCH' ||
+      category === 'YOUTUBE_LEARNING' ||
+      (category === 'APP_INSTALL' && appAttributionMethod === 'IN_APP_FEEDBACK') ||
+      (category === 'APP_TESTING' && appAttributionMethod === 'IN_APP_FEEDBACK');
+
+    const assignedUserIds = assignedUserIdsText
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    const userGroups = userGroupsText
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
     const payload: any = {
       campaignId,
       title: title.trim(),
       description: resolvedDescription,
       category,
-      verificationMethod: isFirstParty ? 'FIRST_PARTY_ACTION' : verificationMethod,
+      verificationMethod:
+        category === 'APP_INSTALL' && appAttributionMethod === 'MANUAL_REVIEW'
+          ? 'MANUAL_REVIEW'
+          : category === 'APP_TESTING' && appAttributionMethod === 'MANUAL_REVIEW'
+          ? 'MANUAL_REVIEW'
+          : isFirstParty
+          ? 'FIRST_PARTY_ACTION'
+          : verificationMethod,
       rewardPoints: Number(rewardPoints),
       totalCap: Number(totalCap),
       dailyCapPerUser: Number(dailyCapPerUser),
@@ -458,15 +644,20 @@ export const CreateEditTask: React.FC = () => {
           ? Number(minReadDurationSeconds)
           : category === 'VIDEO_WATCH'
           ? Number(requiredWatchSeconds)
+          : category === 'YOUTUBE_LEARNING'
+          ? Number(youtubeSessionDuration)
           : Number(dwellTimeSeconds),
       targeting: {
         minAncestryDepth: minAncestryDepth > 0 ? minAncestryDepth : undefined,
         kycRequired,
+        assignedUserIds: assignedUserIds.length > 0 ? assignedUserIds : undefined,
+        userGroups: userGroups.length > 0 ? userGroups : undefined,
       },
       externalActionUrl: externalActionUrl.trim() || undefined,
       instructions: instructions.trim() || undefined,
       articleReadConfig,
       videoWatchConfig,
+      youtubeLearningConfig,
       appInstallConfig,
       expiresAt: expiresAt.trim() ? new Date(expiresAt).toISOString() : undefined,
     };
@@ -606,7 +797,19 @@ export const CreateEditTask: React.FC = () => {
               }`}
             >
               <Video className="w-3.5 h-3.5 text-amber-400" />
-              Video Learning
+              Direct Video
+            </button>
+            <button
+              type="button"
+              onClick={fillSampleYouTubeDefaults}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 ${
+                category === 'YOUTUBE_LEARNING'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 ring-1 ring-rose-500/30'
+                  : 'bg-obsidian-800 hover:bg-obsidian-700 text-slate-300 border-obsidian-700'
+              }`}
+            >
+              <Play className="w-3.5 h-3.5 text-rose-400" />
+              YouTube Learning
             </button>
             <button
               type="button"
@@ -618,7 +821,7 @@ export const CreateEditTask: React.FC = () => {
               }`}
             >
               <Download className="w-3.5 h-3.5 text-cyan-400" />
-              App Testing & Feedback
+              App Testing
             </button>
             {isSandboxCampaign && (
               <button
@@ -674,7 +877,7 @@ export const CreateEditTask: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                   Task Type *
                 </label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -710,8 +913,28 @@ export const CreateEditTask: React.FC = () => {
                   >
                     <Video className={`w-5 h-5 shrink-0 mt-0.5 ${category === 'VIDEO_WATCH' ? 'text-amber-400' : 'text-slate-400'}`} />
                     <div>
-                      <div className="text-xs font-bold text-white">Video Learning</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Educational video with anti-skip & verification quiz.</div>
+                      <div className="text-xs font-bold text-white">Direct Video</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">MP4/HLS video with player telemetry & quiz.</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategory('YOUTUBE_LEARNING');
+                      setVerificationMethod('FIRST_PARTY_ACTION');
+                      clearFieldError('category');
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
+                      category === 'YOUTUBE_LEARNING'
+                        ? 'border-rose-500 bg-rose-950/30 ring-1 ring-rose-500/50'
+                        : 'border-obsidian-700 bg-obsidian-850 hover:border-obsidian-600'
+                    }`}
+                  >
+                    <Play className={`w-5 h-5 shrink-0 mt-0.5 ${category === 'YOUTUBE_LEARNING' ? 'text-rose-400' : 'text-slate-400'}`} />
+                    <div>
+                      <div className="text-xs font-bold text-white">YouTube Learning</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">Authorized player with session timer & quiz.</div>
                     </div>
                   </button>
 
@@ -1240,8 +1463,223 @@ export const CreateEditTask: React.FC = () => {
             </div>
           )}
 
-          {/* SECTION 2: APP TESTING & FEEDBACK SPECIFICATION (when category === 'APP_INSTALL') */}
-          {category === 'APP_INSTALL' && (
+          {/* SECTION 2: YOUTUBE LEARNING SPECIFICATION (when category === 'YOUTUBE_LEARNING') */}
+          {category === 'YOUTUBE_LEARNING' && (
+            <div className="space-y-4 pt-4 border-t border-obsidian-750">
+              <div className="flex items-center justify-between border-b border-obsidian-750 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Play className="w-4 h-4 text-rose-400" />
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                    2. YouTube Video Learning & Verification
+                  </h2>
+                </div>
+                <span className="text-xs text-rose-400 font-mono">Authorized Embed · Quiz Verified</span>
+              </div>
+
+              {/* YouTube Compliance Notice */}
+              <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3.5 text-xs text-rose-200 flex items-start gap-3">
+                <ShieldCheck className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong>Policy Compliance & Integrity:</strong> In strict compliance with Google Play and YouTube Terms of Service, rewards are granted exclusively for educational session participation and server-verified comprehension quiz answers. ADPAYON does <strong>NOT</strong> award rewards for inflating YouTube view counts, watch time, likes, or subscriptions.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      YouTube Video URL *
+                    </label>
+                    {youtubeUrl.trim() && (
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        {extractYouTubeId(youtubeUrl.trim())
+                          ? `Extracted Video ID: ${extractYouTubeId(youtubeUrl.trim())}`
+                          : 'Invalid YouTube URL'}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID"
+                    value={youtubeUrl}
+                    onChange={(e) => {
+                      setYoutubeUrl(e.target.value);
+                      clearFieldError('youtubeUrl');
+                    }}
+                    className={`w-full rounded-xl border ${
+                      fieldErrors.youtubeUrl ? 'border-rose-500' : 'border-obsidian-600'
+                    } bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition`}
+                  />
+                  {fieldErrors.youtubeUrl && (
+                    <p className="mt-1 text-xs text-rose-400 font-medium">{fieldErrors.youtubeUrl}</p>
+                  )}
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Enter any valid standard YouTube URL or shortened link. The 11-character video ID is automatically extracted.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Educational Session Duration (Seconds) *
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="number"
+                      required
+                      min={10}
+                      max={1800}
+                      value={youtubeSessionDuration}
+                      onChange={(e) => {
+                        const dur = parseInt(e.target.value, 10) || 60;
+                        setYoutubeSessionDuration(dur);
+                        setDwellTimeSeconds(dur);
+                        clearFieldError('youtubeSessionDuration');
+                      }}
+                      className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400">Presets:</span>
+                      {[30, 45, 60, 90, 120].map((sec) => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => {
+                            setYoutubeSessionDuration(sec);
+                            setDwellTimeSeconds(sec);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                            youtubeSessionDuration === sec
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : 'bg-obsidian-800 text-slate-400 border-obsidian-700 hover:text-white'
+                          }`}
+                        >
+                          {sec}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {fieldErrors.youtubeSessionDuration && (
+                    <p className="mt-1 text-xs text-rose-400 font-medium">{fieldErrors.youtubeSessionDuration}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Verification Method
+                  </label>
+                  <div className="p-3 rounded-xl border border-obsidian-700 bg-obsidian-800/60 text-xs text-slate-300">
+                    <div className="font-semibold text-white">Authorized Embed + Quiz Mastery</div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Learners view content via official player and must answer the comprehension question correctly.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* YOUTUBE COMPREHENSION QUIZ */}
+              <div className="mt-4 p-5 rounded-xl border border-obsidian-700 bg-obsidian-800/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <HelpCircle className="w-4 h-4 text-rose-400" />
+                    <div>
+                      <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Learning Comprehension Question
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Single verification question evaluated by the backend to confirm active learning before rewards are credited.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={enableYouTubeQuiz}
+                      onChange={(e) => setEnableYouTubeQuiz(e.target.checked)}
+                      className="w-4 h-4 rounded border-obsidian-600 text-rose-500 focus:ring-rose-500"
+                    />
+                    <span>Require Quiz</span>
+                  </label>
+                </div>
+
+                {enableYouTubeQuiz && (
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Question *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. What is the safest action when an unknown caller asks for your OTP?"
+                        value={youtubeQuizQuestion}
+                        onChange={(e) => {
+                          setYoutubeQuizQuestion(e.target.value);
+                          clearFieldError('youtubeQuizQuestion');
+                        }}
+                        className={`w-full rounded-xl border ${
+                          fieldErrors.youtubeQuizQuestion ? 'border-rose-500' : 'border-obsidian-600'
+                        } bg-obsidian-900 px-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none transition`}
+                      />
+                      {fieldErrors.youtubeQuizQuestion && (
+                        <p className="mt-1 text-xs text-rose-400 font-medium">{fieldErrors.youtubeQuizQuestion}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Answer Options (Select the single radio button next to the correct answer) *
+                      </label>
+                      <div className="space-y-2">
+                        {youtubeQuizOptions.map((opt, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex items-center gap-3 p-2.5 rounded-xl border transition ${
+                              youtubeQuizCorrectOptionIndex === idx
+                                ? 'border-rose-500/50 bg-rose-950/20'
+                                : 'border-obsidian-700 bg-obsidian-900'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="ytCorrectOption"
+                              checked={youtubeQuizCorrectOptionIndex === idx}
+                              onChange={() => {
+                                setYoutubeQuizCorrectOptionIndex(idx);
+                                clearFieldError('youtubeQuizCorrectOptionIndex');
+                              }}
+                              className="w-4 h-4 text-rose-500 focus:ring-rose-500"
+                              title="Mark as correct option"
+                            />
+                            <span className="text-xs font-bold text-slate-400 w-5">
+                              {String.fromCharCode(65 + idx)}:
+                            </span>
+                            <input
+                              type="text"
+                              value={opt}
+                              onChange={(e) => handleYouTubeOptionChange(idx, e.target.value)}
+                              placeholder={`Option ${String.fromCharCode(65 + idx)} text...`}
+                              className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                            />
+                            {youtubeQuizCorrectOptionIndex === idx && (
+                              <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                                Correct Answer
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {fieldErrors.youtubeQuizOptions && (
+                        <p className="mt-1 text-xs text-rose-400 font-medium">{fieldErrors.youtubeQuizOptions}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 2: APP TESTING & FEEDBACK SPECIFICATION (when category === 'APP_INSTALL' or 'APP_TESTING') */}
+          {(category === 'APP_INSTALL' || category === 'APP_TESTING') && (
             <div className="space-y-4 pt-4 border-t border-obsidian-750">
               <div className="flex items-center justify-between border-b border-obsidian-750 pb-2.5">
                 <div className="flex items-center gap-2">
@@ -1297,11 +1735,89 @@ export const CreateEditTask: React.FC = () => {
                     type="url"
                     placeholder="https://play.google.com/store/apps/details?id=com.example.app"
                     value={storeUrl}
-                    onChange={(e) => setStoreUrl(e.target.value)}
+                    onChange={(e) => handleStoreUrlChange(e.target.value)}
                     className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition"
                   />
                   <p className="mt-1 text-[11px] text-slate-400">
                     Earners tap a clear button to open the store page and voluntarily try the app.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Required Testing Duration (Seconds) *
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="number"
+                      required
+                      min={10}
+                      max={1800}
+                      value={requiredTestingSeconds}
+                      onChange={(e) => {
+                        const s = parseInt(e.target.value, 10) || 60;
+                        setRequiredTestingSeconds(s);
+                        setDwellTimeSeconds(s);
+                      }}
+                      className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400">Presets:</span>
+                      {[30, 60, 120, 300].map((sec) => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => {
+                            setRequiredTestingSeconds(sec);
+                            setDwellTimeSeconds(sec);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                            requiredTestingSeconds === sec
+                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                              : 'bg-obsidian-800 text-slate-400 border-obsidian-700 hover:text-white'
+                          }`}
+                        >
+                          {sec}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Attribution & Approval Workflow *
+                  </label>
+                  <select
+                    value={appAttributionMethod}
+                    onChange={(e) => setAppAttributionMethod(e.target.value as any)}
+                    className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
+                  >
+                    <option value="IN_APP_FEEDBACK">
+                      IN_APP_FEEDBACK — Immediate verification upon in-app UX feedback
+                    </option>
+                    <option value="MANUAL_REVIEW">
+                      MANUAL_REVIEW — Requires Admin approval queue review before points release
+                    </option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Choose whether submissions are credited immediately or held for admin review.
+                  </p>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Partner / Test Completion Code (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PARTNER-BETA-2026 (Optional code generated inside partner app)"
+                    value={completionCode}
+                    onChange={(e) => setCompletionCode(e.target.value)}
+                    className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    If configured, earners must enter this code upon returning to prove completion.
                   </p>
                 </div>
 
@@ -1379,25 +1895,10 @@ export const CreateEditTask: React.FC = () => {
                   onChange={(e) => setTotalCap(parseInt(e.target.value, 10) || 1)}
                   className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
                 />
-                <p className="mt-1 text-[10px] text-slate-400">Task automatically halts when reached.</p>
+                <p className="mt-1 text-[10px] text-slate-400">Total verified claims allowed globally.</p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Daily Cap Per User *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={dailyCapPerUser}
-                  onChange={(e) => setDailyCapPerUser(parseInt(e.target.value, 10) || 1)}
-                  className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
-                />
-                <p className="mt-1 text-[10px] text-slate-400">Maximum times an individual can complete daily.</p>
-              </div>
-
-              <div className="md:col-span-3">
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                   Task Expiration Date & Time (Optional)
                 </label>
@@ -1413,11 +1914,99 @@ export const CreateEditTask: React.FC = () => {
                   />
                 </div>
                 <p className="mt-1 text-[10px] text-slate-400">
-                  When passed, the task automatically disappears from earner feeds and rejects attempts.
+                  When passed, automatically halts and rejects attempts.
                 </p>
               </div>
             </div>
           </div>
+
+          {/* SECTION 4: ADVANCED SETTINGS & TARGETING (OPTIONAL COLLAPSIBLE) */}
+          <details className="group rounded-xl border border-obsidian-750 bg-obsidian-850/40 p-5 transition">
+            <summary className="flex items-center justify-between cursor-pointer list-none text-xs font-bold text-slate-300 uppercase tracking-wider select-none">
+              <div className="flex items-center gap-2.5">
+                <Target className="w-4 h-4 text-purple-400" />
+                <span>4. Advanced Targeting & Caps (Optional)</span>
+              </div>
+              <span className="text-slate-400 text-xs font-mono group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 mt-4 border-t border-obsidian-750">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Daily Cap Per User
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={dailyCapPerUser}
+                  onChange={(e) => setDailyCapPerUser(parseInt(e.target.value, 10) || 1)}
+                  className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2 text-sm text-white focus:border-purple-500 focus:outline-none transition"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">Maximum times an individual earner can complete daily.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Assigned Specific User IDs
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 64aef..., 64bf2... (comma-separated)"
+                  value={assignedUserIdsText}
+                  onChange={(e) => setAssignedUserIdsText(e.target.value)}
+                  className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition font-mono text-xs"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Leave blank for all users. When set, restricts task to designated user IDs.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Eligible User Groups
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. BETA_TESTERS, VERIFIED_EARNERS"
+                  value={userGroupsText}
+                  onChange={(e) => setUserGroupsText(e.target.value)}
+                  className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition text-xs"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Cohort restriction for specialized test campaigns.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Minimum Referral Depth
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={minAncestryDepth}
+                  onChange={(e) => setMinAncestryDepth(parseInt(e.target.value, 10) || 0)}
+                  className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2 text-sm text-white focus:border-purple-500 focus:outline-none transition text-xs"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">0 = No network restriction.</p>
+              </div>
+
+              <div className="md:col-span-2 flex items-center gap-3 p-3.5 rounded-xl border border-obsidian-700 bg-obsidian-800/50">
+                <input
+                  type="checkbox"
+                  id="kycReq"
+                  checked={kycRequired}
+                  onChange={(e) => setKycRequired(e.target.checked)}
+                  className="w-4 h-4 rounded border-obsidian-600 text-purple-500 focus:ring-purple-500"
+                />
+                <label htmlFor="kycReq" className="text-xs text-slate-300 cursor-pointer">
+                  <span className="font-bold text-white block">Require Strict KYC Verification</span>
+                  <span>Earner must have completed official KYC verification before starting this task.</span>
+                </label>
+              </div>
+            </div>
+          </details>
 
           {/* DRAFT SAFETY NOTE */}
           <div className="rounded-xl border border-obsidian-700 bg-obsidian-800/50 p-4 text-xs text-slate-300 flex items-start gap-3">
@@ -1490,8 +2079,10 @@ export const CreateEditTask: React.FC = () => {
               >
                 {category === 'VIDEO_WATCH'
                   ? 'Video Player Screen'
-                  : category === 'APP_INSTALL'
-                  ? 'Feedback Screen'
+                  : category === 'YOUTUBE_LEARNING'
+                  ? 'YouTube Player Screen'
+                  : category === 'APP_INSTALL' || category === 'APP_TESTING'
+                  ? 'App Testing Screen'
                   : 'Article Reader Screen'}
               </button>
             </div>
@@ -1519,7 +2110,11 @@ export const CreateEditTask: React.FC = () => {
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                           Video Learning 🎥
                         </span>
-                      ) : category === 'APP_INSTALL' ? (
+                      ) : category === 'YOUTUBE_LEARNING' ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                          YouTube Learning 🎓
+                        </span>
+                      ) : category === 'APP_INSTALL' || category === 'APP_TESTING' ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                           App Testing 📱
                         </span>
@@ -1529,7 +2124,13 @@ export const CreateEditTask: React.FC = () => {
                         </span>
                       )}
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono text-slate-300 bg-obsidian-800 border border-obsidian-700">
-                        {category === 'VIDEO_WATCH' ? 'Watch & Learn' : category === 'APP_INSTALL' ? 'Feedback' : 'Dwell Time'}
+                        {category === 'VIDEO_WATCH'
+                          ? 'Watch & Learn'
+                          : category === 'YOUTUBE_LEARNING'
+                          ? 'Video Lesson'
+                          : category === 'APP_INSTALL' || category === 'APP_TESTING'
+                          ? 'Test & Feedback'
+                          : 'Dwell Time'}
                       </span>
                     </div>
                     <div className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold">
@@ -1557,8 +2158,10 @@ export const CreateEditTask: React.FC = () => {
                     <span className="flex items-center gap-1 text-slate-300 font-medium">
                       {category === 'VIDEO_WATCH'
                         ? `⏱ Watch ${requiredWatchSeconds}s`
-                        : category === 'APP_INSTALL'
-                        ? `⭐ Rate & Feedback`
+                        : category === 'YOUTUBE_LEARNING'
+                        ? `🎓 ${youtubeSessionDuration}s Learning Session`
+                        : category === 'APP_INSTALL' || category === 'APP_TESTING'
+                        ? `⭐ Rate & Feedback (${requiredTestingSeconds}s)`
                         : `📖 Read & Quiz (~${approxMinutes} min)`}
                     </span>
                     <span>🎯 0/{dailyCapPerUser} daily</span>
@@ -1572,7 +2175,9 @@ export const CreateEditTask: React.FC = () => {
                   >
                     {category === 'VIDEO_WATCH'
                       ? 'Watch Video ▶'
-                      : category === 'APP_INSTALL'
+                      : category === 'YOUTUBE_LEARNING'
+                      ? 'Start YouTube Lesson 🎓'
+                      : category === 'APP_INSTALL' || category === 'APP_TESTING'
                       ? 'Test & Feedback 📱'
                       : 'Start Reading 📖'}
                   </button>
@@ -1645,7 +2250,86 @@ export const CreateEditTask: React.FC = () => {
                   Claim {rewardPoints} PTS
                 </button>
               </div>
-            ) : category === 'APP_INSTALL' ? (
+            ) : category === 'YOUTUBE_LEARNING' ? (
+              // 2B. YOUTUBE LEARNING TASK SIMULATOR
+              <div className="space-y-3 py-1 max-h-[500px] overflow-y-auto pr-1">
+                <div className="flex items-center justify-between pb-2 border-b border-obsidian-800">
+                  <span className="text-xs text-slate-400 font-semibold">← Exit</span>
+                  <span className="text-xs font-bold text-white truncate max-w-[160px]">
+                    {title || 'YouTube Video Learning'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono">
+                    {youtubeSessionDuration}s SESSION
+                  </span>
+                </div>
+
+                {/* Simulated YouTube Embed Player */}
+                <div className="w-full aspect-video bg-obsidian-950 rounded-xl border border-rose-500/30 flex flex-col items-center justify-center relative overflow-hidden p-3 text-center">
+                  <div className="w-12 h-12 rounded-full bg-rose-600/20 border border-rose-500/40 flex items-center justify-center mb-2">
+                    <Play className="w-6 h-6 text-rose-400 fill-rose-400/30 ml-0.5" />
+                  </div>
+                  <span className="text-xs font-bold text-white truncate max-w-[240px]">
+                    {title || 'Educational Video'}
+                  </span>
+                  <span className="text-[10px] text-rose-300 font-mono mt-1">
+                    YouTube ID: {extractYouTubeId(youtubeUrl.trim()) || 'dQw4w9WgXcQ'}
+                  </span>
+                </div>
+
+                {/* Policy Notice */}
+                <div className="p-2.5 rounded-lg border border-obsidian-750 bg-obsidian-900 text-[10px] text-slate-400 leading-relaxed">
+                  <strong className="text-slate-300">Learning Notice:</strong> Watch and learn at your own pace. Rewards are credited solely for completing the educational quiz below.
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Session Timer: 0s / {youtubeSessionDuration}s</span>
+                    <span>100%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-obsidian-800 overflow-hidden">
+                    <div className="h-full bg-rose-500 w-1/2" />
+                  </div>
+                </div>
+
+                {/* Verification Question Card */}
+                {enableYouTubeQuiz && (
+                  <div className="p-3 rounded-xl border border-obsidian-700 bg-obsidian-900/95 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block">
+                      Comprehension Quiz
+                    </span>
+                    <p className="text-xs font-semibold text-white">
+                      {youtubeQuizQuestion || 'Comprehension question here...'}
+                    </p>
+                    <div className="space-y-1">
+                      {youtubeQuizOptions.map((opt, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-2 rounded-lg border text-[11px] flex items-center gap-2 ${
+                            youtubeQuizCorrectOptionIndex === idx
+                              ? 'border-rose-500/50 bg-rose-950/20 text-rose-300 font-medium'
+                              : 'border-obsidian-800 bg-obsidian-950 text-slate-300'
+                          }`}
+                        >
+                          <span className="w-4 font-bold text-slate-400">{String.fromCharCode(65 + idx)}.</span>
+                          <span className="flex-1">{opt}</span>
+                          {youtubeQuizCorrectOptionIndex === idx && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-2.5 rounded-xl bg-emerald-600/50 text-white font-bold text-xs"
+                >
+                  Submit Quiz & Claim {rewardPoints} PTS
+                </button>
+              </div>
+            ) : (category === 'APP_INSTALL' || category === 'APP_TESTING') ? (
               // 3. APP TESTING & FEEDBACK SIMULATOR
               <div className="space-y-3 py-1 max-h-[500px] overflow-y-auto pr-1">
                 <div className="flex items-center justify-between pb-2 border-b border-obsidian-800">

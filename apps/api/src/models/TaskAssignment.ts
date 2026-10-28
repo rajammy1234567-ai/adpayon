@@ -16,6 +16,9 @@ export interface ITaskAssignment extends Document {
   completedAt?: Date;
   hasOpenedStore?: boolean;
   storeVisitedAt?: Date;
+  initialInstallStatus?: 'INSTALLED' | 'NOT_INSTALLED' | 'UNAVAILABLE';
+  initialPackageName?: string;
+  initialInstallCheckedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,6 +79,17 @@ const taskAssignmentSchema = new Schema<ITaskAssignment>(
       default: false,
     },
     storeVisitedAt: {
+      type: Date,
+    },
+    initialInstallStatus: {
+      type: String,
+      enum: ['INSTALLED', 'NOT_INSTALLED', 'UNAVAILABLE'],
+    },
+    initialPackageName: {
+      type: String,
+      trim: true,
+    },
+    initialInstallCheckedAt: {
       type: Date,
     },
   },

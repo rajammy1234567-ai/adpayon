@@ -6,13 +6,21 @@ interface AuthContextType {
   admin: AdminUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (mobile: string, password: string) => Promise<{
+  login: (
+    mobile: string,
+    password: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => Promise<{
     mfaRequired: boolean;
     mfaSessionToken: string;
     maskedMobile: string;
     message: string;
   }>;
-  verifyMfa: (mfaSessionToken: string, otp: string) => Promise<AdminUser>;
+  verifyMfa: (
+    mfaSessionToken: string,
+    otp: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => Promise<AdminUser>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -57,13 +65,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (mobile: string, password: string) => {
-    const res = await api.login(mobile, password);
+  const login = async (
+    mobile: string,
+    password: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => {
+    const res = await api.login(mobile, password, options);
     return res.data;
   };
 
-  const verifyMfa = async (mfaSessionToken: string, otp: string) => {
-    const res = await api.verifyMfa(mfaSessionToken, otp);
+  const verifyMfa = async (
+    mfaSessionToken: string,
+    otp: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => {
+    const res = await api.verifyMfa(mfaSessionToken, otp, options);
     setAdmin(res.data.admin);
     return res.data.admin;
   };
