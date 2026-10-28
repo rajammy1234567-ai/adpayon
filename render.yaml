@@ -1,13 +1,13 @@
 services:
   - type: web
-    name: adpayon-api
+    name: adpayon-client-api
     runtime: node
     plan: free
     region: oregon
     buildCommand: npm install && npm run build:shared && npm run build:api
     startCommand: node apps/api/dist/src/server.js
     healthCheckPath: /api/health
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
