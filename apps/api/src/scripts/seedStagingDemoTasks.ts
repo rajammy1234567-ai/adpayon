@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import mongoose, { Types } from 'mongoose';
 
@@ -185,6 +186,8 @@ export async function seedStagingDemoTasks(dryRun = false) {
       isSandbox: false,
       advertiserBudgetPaise: 1000000,
       spentBudgetPaise: 0,
+      authorizedAgreementRef: 'AGR-STAGING-DEMO-2026',
+      webhookSecret: crypto.randomBytes(32).toString('hex'),
       createdBy: adminId,
     });
     console.log(`[SEED] Created campaign: "${campaign.name}" (${campaign._id})`);

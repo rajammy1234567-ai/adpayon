@@ -99,6 +99,10 @@ const userSchema = new Schema<IUser>(
         enum: ['NOT_SUBMITTED', 'PENDING', 'VERIFIED', 'REJECTED'],
         default: 'NOT_SUBMITTED',
       },
+      accountType: {
+        type: String,
+        default: 'USER',
+      },
     },
   },
   {

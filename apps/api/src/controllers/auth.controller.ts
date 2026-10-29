@@ -534,9 +534,9 @@ export async function login(req: Request, res: Response): Promise<void> {
   let user: (IUser & { passwordHash: string }) | null = null;
 
   if (isEmailIdentifier) {
-    // Staging Reviewer Login: Allowed ONLY when APP_ENV=client_staging and database is adpayon_client_staging
+    // Staging Reviewer Login: Allowed ONLY when APP_ENV is client_staging/staging and database is adpayon_client_staging
     const isStagingReviewerAllowed =
-      env.APP_ENV === 'client_staging' &&
+      (env.APP_ENV === 'client_staging' || env.APP_ENV === 'staging') &&
       mongoose.connection.db?.databaseName === 'adpayon_client_staging';
 
     if (!isStagingReviewerAllowed || rawIdentifier.toLowerCase() !== 'client.demo@adpayon.test') {
