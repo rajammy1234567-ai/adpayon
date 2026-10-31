@@ -6,6 +6,7 @@ import {
   PlatformMetrics,
   AdminUser,
   Pagination,
+  AdminNewsArticle,
 } from '../types';
 
 const API_BASE = '/api';
@@ -390,6 +391,80 @@ class ApiClient {
       success: boolean;
       data: { logs: AdminAuditLog[]; pagination: Pagination };
     }>(`/admin/audit-logs?${params.toString()}`);
+  }
+
+  // --- Curated News Articles ---
+  public async listNews() {
+    return this.request<{
+      success: boolean;
+      data: AdminNewsArticle[];
+    }>('/admin/news');
+  }
+
+  public async createNews(data: {
+    title: string;
+    summary: string;
+    source: string;
+    url: string;
+    category?: string;
+    priority?: number;
+    isPublished?: boolean;
+  }) {
+    return this.request<{
+      success: boolean;
+      data: AdminNewsArticle;
+    }>('/admin/news', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateNews(
+    id: string,
+    data: Partial<{
+      title: string;
+      summary: string;
+      source: string;
+      url: string;
+      category: string;
+      priority: number;
+      isPublished: boolean;
+    }>
+  ) {
+    return this.request<{
+      success: boolean;
+      data: AdminNewsArticle;
+    }>(`/admin/news/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async publishNews(id: string) {
+    return this.request<{
+      success: boolean;
+      data: { id: string; isPublished: boolean; publishedAt: string };
+    }>(`/admin/news/${id}/publish`, {
+      method: 'POST',
+    });
+  }
+
+  public async unpublishNews(id: string) {
+    return this.request<{
+      success: boolean;
+      data: { id: string; isPublished: boolean };
+    }>(`/admin/news/${id}/unpublish`, {
+      method: 'POST',
+    });
+  }
+
+  public async deleteNews(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/admin/news/${id}`, {
+      method: 'DELETE',
+    });
   }
 }
 

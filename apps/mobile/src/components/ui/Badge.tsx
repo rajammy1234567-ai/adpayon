@@ -24,34 +24,34 @@ export const Badge: React.FC<BadgeProps> = ({ label, variant = 'neutral', style 
       case 'active':
       case 'verified':
         return {
-          bg: THEME.colors.emeraldGlow,
+          bg: THEME.colors.emeraldSubtle,
           text: THEME.colors.emerald,
-          border: THEME.colors.emeraldDark,
+          border: '#BBF7D0',
         };
       case 'inactive':
       case 'rejected':
         return {
-          bg: THEME.colors.dangerGlow,
+          bg: THEME.colors.primarySubtle,
           text: THEME.colors.danger,
-          border: THEME.colors.danger,
+          border: '#FECACA',
         };
       case 'pending':
       case 'gold':
         return {
-          bg: THEME.colors.goldGlow,
+          bg: THEME.colors.goldSubtle,
           text: THEME.colors.gold,
-          border: THEME.colors.goldDark,
+          border: '#FDE68A',
         };
       case 'cyan':
         return {
-          bg: THEME.colors.cyanGlow,
+          bg: '#F0F9FF',
           text: THEME.colors.cyan,
-          border: THEME.colors.cyan,
+          border: '#BAE6FD',
         };
       case 'neutral':
       default:
         return {
-          bg: THEME.colors.surfaceElevated,
+          bg: THEME.colors.surfaceSubtle,
           text: THEME.colors.textSecondary,
           border: THEME.colors.border,
         };
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
 });

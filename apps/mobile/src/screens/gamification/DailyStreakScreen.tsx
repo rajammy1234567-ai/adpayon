@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { DailyStreakItem, formatPaiseToRupees } from '@adpayon/shared';
 import { Button } from '../../components/ui/Button';
@@ -36,17 +35,17 @@ export const DailyStreakScreen: React.FC = () => {
     claimReward(todayReward, 'ENGAGEMENT', 'Day 5 Attendance Streak Bonus');
     setIsClaimedToday(true);
     updateUser({ streakCount: currentStreak + 1 });
-    Alert.alert('Bonus Credited! 🔥', '₹7.00 added to your spendable ledger balance!');
+    Alert.alert('Bonus Credited! 🔥', '₹7.00 added to your available balance!');
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('gamification.streakTitle')}
-        subtitle="Check in every 24 hours to multiply attendance cash gifts"
+        subtitle="Check in every 24 hours to multiply attendance rewards"
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Streak Counter Hero */}
         <Card variant="gold" style={styles.heroCard}>
           <View style={styles.fireBadge}>
@@ -140,28 +139,30 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   fireEmoji: {
-    fontSize: 34,
+    fontSize: 32,
   },
   streakNumber: {
     fontSize: 32,
     fontWeight: '900',
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
+    letterSpacing: 0.5,
   },
   streakSub: {
-    fontSize: 13,
-    color: THEME.colors.textSecondary,
-    fontWeight: '600',
-    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginTop: 4,
   },
   streakDesc: {
     fontSize: 12,
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 18,
+    marginTop: 6,
+    lineHeight: 18,
     maxWidth: 280,
   },
   claimBtn: {
+    marginTop: 18,
     width: '100%',
   },
   calendarHeader: {
@@ -169,34 +170,34 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: THEME.colors.textPrimary,
     marginBottom: 12,
+    letterSpacing: 0.3,
   },
   calendarRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
     marginBottom: 24,
   },
   dayBox: {
-    width: '23%',
-    height: 100,
-    backgroundColor: THEME.colors.surface,
+    flex: 1,
+    marginHorizontal: 2,
+    paddingVertical: 12,
     borderRadius: THEME.borderRadius.md,
-    borderWidth: 1.5,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 1,
     borderColor: THEME.colors.border,
-    padding: 8,
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   dayBoxToday: {
     borderColor: THEME.colors.gold,
-    backgroundColor: THEME.colors.goldGlow,
+    backgroundColor: THEME.colors.goldSubtle,
+    borderWidth: 1.5,
   },
   dayBoxClaimed: {
     borderColor: THEME.colors.emerald,
-    backgroundColor: THEME.colors.emeraldGlow,
+    backgroundColor: THEME.colors.emeraldSubtle,
   },
   dayBoxLocked: {
-    opacity: 0.5,
+    opacity: 0.7,
   },
   dayLabel: {
     fontSize: 11,
@@ -216,11 +217,12 @@ const styles = StyleSheet.create({
   todayPill: {
     fontSize: 9,
     fontWeight: '800',
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     textTransform: 'uppercase',
   },
   rulesCard: {
     padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
   },
   rulesTitle: {
     fontSize: 14,

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { User, IUser, AdminAuditLog, AuthSecurityEvent } from '../models';
@@ -24,6 +25,45 @@ interface MfaChallengePayload {
   userId: string;
   role: string;
   purpose: 'ADMIN_MFA_CHALLENGE';
+}
+
+/**
+ * Strict Security Guard for Staging Admin MFA:
+ * Permits in-portal test 2FA OTP delivery strictly for client-staging environment and database,
+ * bounded by a MANDATORY, NON-EMPTY operator-approved allowlist (STAGING_ADMIN_MOBILES).
+ * Rejects wildcards (*) and unrestricted mobile access.
+ * Must verify password first before this is even evaluated.
+ */
+export function isStagingAdminMfaAllowed(mobile: string, dbNameOverride?: string): boolean {
+  const isStagingEnv = env.APP_ENV === 'client_staging' || env.APP_ENV === 'staging';
+  const activeDb = dbNameOverride || mongoose.connection.db?.databaseName;
+  const isStagingDb = activeDb === 'adpayon_client_staging';
+  if (!isStagingEnv || !isStagingDb) {
+    return false;
+  }
+  const configured = env.STAGING_ADMIN_MOBILES?.trim();
+  if (!configured || configured.length === 0) {
+    return false;
+  }
+  if (configured.includes('*') || configured.toUpperCase().includes('ALL')) {
+    logger.warn('Wildcard in STAGING_ADMIN_MOBILES is strictly prohibited. Refusing in-portal admin MFA OTP.');
+    return false;
+  }
+  const normalize10 = (num: string) => {
+    const digits = num.replace(/\D/g, '');
+    return digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+  };
+
+  const target = normalize10(mobile);
+  const allowlist = configured
+    .split(',')
+    .map((m) => normalize10(m.trim()))
+    .filter(Boolean);
+
+  if (allowlist.length === 0) {
+    return false;
+  }
+  return allowlist.includes(target);
 }
 
 /**
@@ -147,6 +187,7 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
 
   // Mask mobile for security display (e.g., +91 ••••• ••210)
   const maskedMobile = (user.mobile || '').replace(/(\+\d{2})(\d{5})(\d{3})(\d{2})/, '$1 ••••• ••$4');
+  const canDiscloseAdminMfa = isStagingAdminMfaAllowed(user.mobile!);
 
   res.status(200).json({
     success: true,
@@ -155,6 +196,7 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
       mfaSessionToken,
       maskedMobile,
       message: 'MFA challenge initiated. Please enter the 6-digit code sent to your registered mobile.',
+      ...(canDiscloseAdminMfa && otpResult.rawOtp ? { testOtp: otpResult.rawOtp } : {}),
     },
   });
 }

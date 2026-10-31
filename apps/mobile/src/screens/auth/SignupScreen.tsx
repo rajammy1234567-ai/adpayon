@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -120,12 +120,12 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>{t('auth.signup')}</Text>
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
     padding: THEME.spacing.xl,
   },
   prefix: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontWeight: '800',
     fontSize: 15,
     marginRight: 6,
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   footerLink: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontSize: 14,
     fontWeight: '800',
   },

@@ -68,6 +68,7 @@ export interface SendOtpResponse {
   message: string;
   data: {
     mobile: string;
+    testOtp?: string;
   };
 }
 

@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   FlatList,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { formatPaiseToRupees, ScratchCardItem } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
@@ -54,7 +53,7 @@ export const ScratchEarnScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('gamification.scratchTitle')}
         subtitle="Unveil surprise cash gifts up to ₹500.00 instantly"
@@ -65,7 +64,7 @@ export const ScratchEarnScreen: React.FC = () => {
         <Card variant="gold" style={styles.bannerCard}>
           <Text style={styles.bannerTitle}>Lucky Golden Cards</Text>
           <Text style={styles.bannerSub}>
-            Earn scratch cards daily via login streaks, binary milestone pairs, and challenge completions.
+            Earn scratch cards daily via login streaks, team milestone pairs, and challenge completions.
           </Text>
         </Card>
 
@@ -76,6 +75,7 @@ export const ScratchEarnScreen: React.FC = () => {
           numColumns={2}
           columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={styles.listContainer}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <TouchableOpacity
               activeOpacity={0.8}
@@ -132,8 +132,8 @@ export const ScratchEarnScreen: React.FC = () => {
             <Text style={styles.modalCardTitle}>{activeCard.title}</Text>
             <Text style={styles.modalCardSub}>
               {scratchProgress < 100
-                ? 'Tap / Rub repeatedly to peel off the foil cover!'
-                : '🎉 Congratulations! Prize verified!'}
+                ? 'Tap repeatedly to peel off the scratch cover!'
+                : '🎉 Congratulations! Prize won!'}
             </Text>
 
             {/* Interactive Scratch Surface */}
@@ -149,7 +149,7 @@ export const ScratchEarnScreen: React.FC = () => {
                 <View style={styles.foilOverlay}>
                   <Text style={styles.foilPattern}>✨ 🪙 💎 🪙 ✨</Text>
                   <Text style={styles.foilPrompt}>
-                    {scratchProgress > 0 ? `Peeling... ${scratchProgress}%` : 'TAP TO PEEL FOIL'}
+                    {scratchProgress > 0 ? `Peeling... ${scratchProgress}%` : 'TAP TO REVEAL'}
                   </Text>
                   <View style={styles.foilBar}>
                     <View style={[styles.foilBarFill, { width: `${scratchProgress}%` }]} />
@@ -162,7 +162,7 @@ export const ScratchEarnScreen: React.FC = () => {
                     {formatPaiseToRupees(activeCard.rewardAmountPaise)}
                   </Text>
                   <Text style={styles.revealedSub}>
-                    Directly Credited into Ledger!
+                    Added to Your Balance!
                   </Text>
                 </View>
               )}
@@ -196,11 +196,12 @@ const styles = StyleSheet.create({
   bannerCard: {
     padding: 14,
     marginBottom: 16,
+    backgroundColor: THEME.colors.surface,
   },
   bannerTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
   },
   bannerSub: {
     fontSize: 12,
@@ -212,7 +213,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   listContainer: {
-    paddingBottom: 30,
+    paddingBottom: 40,
   },
   cardItemWrapper: {
     width: '48%',
@@ -223,6 +224,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 190,
     justifyContent: 'space-between',
+    backgroundColor: THEME.colors.surface,
   },
   badgeRow: {
     width: '100%',
@@ -232,7 +234,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: THEME.colors.surfaceElevated,
+    backgroundColor: THEME.colors.surfaceSubtle,
     justifyContent: 'center',
     alignItems: 'center',
     marginVertical: 6,
@@ -262,7 +264,7 @@ const styles = StyleSheet.create({
   scratchPrompt: {
     fontSize: 11,
     fontWeight: '700',
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
   },
   scratchModalContent: {
     alignItems: 'center',
@@ -283,7 +285,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: THEME.borderRadius.xl,
-    backgroundColor: THEME.colors.surfaceElevated,
+    backgroundColor: THEME.colors.surface,
     borderWidth: 2,
     borderColor: THEME.colors.gold,
     overflow: 'hidden',
@@ -292,15 +294,17 @@ const styles = StyleSheet.create({
   },
   scratchSurfaceRevealed: {
     borderColor: THEME.colors.emerald,
-    backgroundColor: THEME.colors.emeraldGlow,
+    backgroundColor: THEME.colors.emeraldSubtle,
   },
   foilOverlay: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#374151',
+    backgroundColor: THEME.colors.surfaceSubtle,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   foilPattern: {
     fontSize: 20,
@@ -309,13 +313,13 @@ const styles = StyleSheet.create({
   foilPrompt: {
     fontSize: 13,
     fontWeight: '900',
-    color: '#F9FAFB',
+    color: THEME.colors.textPrimary,
     letterSpacing: 1,
   },
   foilBar: {
     width: '80%',
     height: 6,
-    backgroundColor: '#1F2937',
+    backgroundColor: THEME.colors.border,
     borderRadius: 3,
     marginTop: 12,
     overflow: 'hidden',

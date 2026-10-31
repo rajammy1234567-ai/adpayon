@@ -6,16 +6,17 @@ import {
   AppStateStatus,
   Image,
   Linking,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { THEME } from '../../constants/theme';
+import { useScreenBottomSpacing } from '../../hooks/useBottomTabSpacing';
 import { RootStackParamList } from '../../navigation/types';
 import {
   startYouTubeSessionApi,
@@ -68,6 +69,7 @@ export const YouTubeLearningTaskScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<YouTubeLearningTaskRouteProp>();
   const { taskId, assignmentId: initialAssignmentId } = route.params;
+  const bottomSpacing = useScreenBottomSpacing(24);
 
   const [isLoading, setIsLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
@@ -579,7 +581,7 @@ export const YouTubeLearningTaskScreen: React.FC = () => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeContainer}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeContainer}>
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color={THEME.colors.emerald} />
           <Text style={styles.loadingText}>Initializing YouTube Video Learning Session...</Text>
@@ -590,7 +592,7 @@ export const YouTubeLearningTaskScreen: React.FC = () => {
 
   if (initError || !session) {
     return (
-      <SafeAreaView style={styles.safeContainer}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeContainer}>
         <View style={styles.centerBox}>
           <Text style={styles.errorTitle}>Task Unavailable</Text>
           <Text style={styles.errorSubtext}>{initError || 'This learning task could not be loaded.'}</Text>
@@ -607,8 +609,12 @@ export const YouTubeLearningTaskScreen: React.FC = () => {
   const progressPercent = Math.min(100, Math.round((accumulatedSeconds / requiredSeconds) * 100));
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeContainer}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomSpacing }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Top Header */}
         <View style={styles.topHeader}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.exitButton}>
@@ -824,7 +830,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
   },
   centerBox: {
     flex: 1,

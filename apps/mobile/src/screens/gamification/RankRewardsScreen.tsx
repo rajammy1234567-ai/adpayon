@@ -1,11 +1,11 @@
 import React from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_RANKS, formatPaiseToRupees } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
@@ -24,13 +24,13 @@ export const RankRewardsScreen: React.FC = () => {
   const rightCount = user?.binaryStats?.rightCount || 38;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('gamification.rankTitle')}
-        subtitle="8 Prestigious Leadership Tiers Powered by the 25% Pool"
+        subtitle="8 Leadership Tiers Powered by the Community Pool"
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Current Rank Status Card */}
         <Card variant="gold" style={styles.currentRankCard}>
           <View style={styles.rankBadgeCircle}>
@@ -157,6 +157,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: THEME.spacing.xl,
     marginBottom: 20,
+    backgroundColor: THEME.colors.surface,
   },
   rankBadgeCircle: {
     width: 72,
@@ -181,7 +182,7 @@ const styles = StyleSheet.create({
   currentRankName: {
     fontSize: 22,
     fontWeight: '900',
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     marginTop: 2,
     letterSpacing: 1,
   },
@@ -192,6 +193,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 18,
     width: '100%',
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   statCol: {
     flex: 1,
@@ -216,6 +219,7 @@ const styles = StyleSheet.create({
   targetCard: {
     padding: THEME.spacing.lg,
     marginBottom: 24,
+    backgroundColor: THEME.colors.surface,
   },
   targetTitle: {
     fontSize: 15,
@@ -238,7 +242,7 @@ const styles = StyleSheet.create({
   },
   bar: {
     height: 6,
-    backgroundColor: THEME.colors.surfaceElevated,
+    backgroundColor: THEME.colors.surfaceSubtle,
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -256,6 +260,7 @@ const styles = StyleSheet.create({
   rankItemCard: {
     marginBottom: 12,
     padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
   },
   rankItemHeader: {
     flexDirection: 'row',
@@ -282,7 +287,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderSubtle,
+    borderTopColor: THEME.colors.border,
   },
   rewardTitle: {
     fontSize: 12,

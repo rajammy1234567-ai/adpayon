@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Header } from '../../components/ui/Header';
 import { THEME } from '../../constants/theme';
+import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -27,6 +28,7 @@ export const ProfileSettingsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, logout } = useAuthStore();
   const { language, setLanguage, isDarkMode, toggleDarkMode } = useSettingsStore();
+  const bottomSpacing = useBottomTabSpacing();
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to log out of AdPayOn?', [
@@ -69,22 +71,25 @@ export const ProfileSettingsScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header title={t('profile.title')} />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomSpacing }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* User Profile Card */}
         <Card variant="elevated" style={styles.profileCard}>
           <View style={styles.avatarRow}>
             <View style={styles.avatarCircle}>
               <Text style={styles.avatarText}>
-                {user?.name ? user.name[0].toUpperCase() : 'V'}
+                {user?.name ? user.name[0].toUpperCase() : 'U'}
               </Text>
             </View>
 
             <View style={styles.userInfo}>
               <View style={styles.userNameRow}>
-                <Text style={styles.userName}>{user?.name}</Text>
+                <Text style={styles.userName}>{user?.name || 'Partner'}</Text>
                 <Badge
                   label={user?.isActive ? 'Active Member' : 'Inactive'}
                   variant={user?.isActive ? 'active' : 'inactive'}
@@ -93,7 +98,7 @@ export const ProfileSettingsScreen: React.FC = () => {
               </View>
               <Text style={styles.userPhone}>+91 {user?.mobile}</Text>
               <Text style={styles.userRefCode}>
-                Referral Code: <Text style={styles.goldText}>{user?.referralCode}</Text>
+                Referral Code: <Text style={styles.primaryText}>{user?.referralCode || 'ADP1000'}</Text>
               </Text>
               <Text style={styles.sponsorText}>
                 Sponsor: {user?.sponsorName || 'Rajesh Verma'}
@@ -121,12 +126,12 @@ export const ProfileSettingsScreen: React.FC = () => {
               <View style={styles.kycInfo}>
                 <Text style={styles.kycTitle}>
                   {user?.isKycVerified
-                    ? 'KYC Verification Verified'
-                    : 'KYC Verification Incomplete'}
+                    ? 'KYC Verification Completed'
+                    : 'KYC Verification Pending'}
                 </Text>
                 <Text style={styles.kycSub}>
                   {user?.isKycVerified
-                    ? 'PAN, Bank Account & Aadhaar (Last 4) Verified'
+                    ? 'PAN & Bank Details Verified for Instant Payouts'
                     : 'Upload PAN & Bank details to unlock full withdrawals'}
                 </Text>
               </View>
@@ -143,17 +148,17 @@ export const ProfileSettingsScreen: React.FC = () => {
           <View style={styles.settingRow}>
             <View>
               <Text style={styles.settingLabel}>{t('profile.deviceId')}</Text>
-              <Text style={styles.settingVal}>{user?.deviceId}</Text>
+              <Text style={styles.settingVal}>{user?.deviceId || 'Active Device'}</Text>
             </View>
-            <Badge label="1-Device Bound" variant="cyan" />
+            <Badge label="Primary Device" variant="cyan" />
           </View>
 
           <View style={styles.settingRow}>
             <View>
-              <Text style={styles.settingLabel}>Cryptographic Ledger Integrity</Text>
-              <Text style={styles.settingVal}>Append-only audit enabled</Text>
+              <Text style={styles.settingLabel}>Account Security</Text>
+              <Text style={styles.settingVal}>End-to-end protected session</Text>
             </View>
-            <Badge label="Secure" variant="active" />
+            <Badge label="Protected" variant="active" />
           </View>
         </Card>
 
@@ -184,13 +189,13 @@ export const ProfileSettingsScreen: React.FC = () => {
           <View style={styles.settingRow}>
             <View>
               <Text style={styles.settingLabel}>{t('profile.darkMode')}</Text>
-              <Text style={styles.settingVal}>Obsidian Fintech Theme</Text>
+              <Text style={styles.settingVal}>Light / Dark Interface</Text>
             </View>
             <Switch
               value={isDarkMode}
               onValueChange={toggleDarkMode}
-              trackColor={{ false: THEME.colors.border, true: THEME.colors.emerald }}
-              thumbColor={THEME.colors.textPrimary}
+              trackColor={{ false: THEME.colors.border, true: THEME.colors.primary }}
+              thumbColor={isDarkMode ? THEME.colors.primary : '#FFFFFF'}
             />
           </View>
         </Card>
@@ -231,7 +236,7 @@ export const ProfileSettingsScreen: React.FC = () => {
           onPress={handleDeleteAccount}
           variant="outline"
           size="sm"
-          style={{ marginTop: 12, borderColor: THEME.colors.textMuted }}
+          style={styles.deleteBtn}
         />
 
         <Text style={styles.versionFooter}>
@@ -249,11 +254,11 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: THEME.spacing.lg,
-    paddingBottom: 40,
   },
   profileCard: {
     padding: THEME.spacing.lg,
     marginBottom: 16,
+    backgroundColor: THEME.colors.surface,
   },
   avatarRow: {
     flexDirection: 'row',
@@ -263,9 +268,9 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: THEME.colors.surfaceElevated,
+    backgroundColor: THEME.colors.primarySubtle,
     borderWidth: 2,
-    borderColor: THEME.colors.emerald,
+    borderColor: THEME.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -273,7 +278,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 26,
     fontWeight: '900',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   userInfo: {
     flex: 1,
@@ -302,8 +307,8 @@ const styles = StyleSheet.create({
     color: THEME.colors.textMuted,
     marginTop: 2,
   },
-  goldText: {
-    color: THEME.colors.goldLight,
+  primaryText: {
+    color: THEME.colors.primary,
     fontWeight: '800',
   },
   sponsorText: {
@@ -352,6 +357,7 @@ const styles = StyleSheet.create({
   sectionCard: {
     padding: THEME.spacing.md,
     marginBottom: 16,
+    backgroundColor: THEME.colors.surface,
   },
   sectionHeader: {
     fontSize: 13,
@@ -367,7 +373,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.borderSubtle,
+    borderBottomColor: THEME.colors.border,
   },
   settingLabel: {
     fontSize: 13,
@@ -380,9 +386,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   langSwitchBtn: {
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.primarySubtle,
     borderWidth: 1,
-    borderColor: THEME.colors.border,
+    borderColor: THEME.colors.primary,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: THEME.borderRadius.md,
@@ -390,7 +396,7 @@ const styles = StyleSheet.create({
   langSwitchText: {
     fontSize: 11,
     fontWeight: '700',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   linkRow: {
     flexDirection: 'row',
@@ -398,7 +404,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.borderSubtle,
+    borderBottomColor: THEME.colors.border,
   },
   linkText: {
     fontSize: 13,
@@ -407,11 +413,15 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     marginTop: 8,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  deleteBtn: {
+    borderColor: THEME.colors.border,
   },
   versionFooter: {
     textAlign: 'center',
     color: THEME.colors.textMuted,
     fontSize: 11,
+    marginTop: 20,
   },
 });

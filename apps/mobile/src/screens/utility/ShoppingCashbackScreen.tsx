@@ -2,13 +2,14 @@ import React from 'react';
 import {
   Alert,
   FlatList,
-  SafeAreaView,
+
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { ShoppingStoreItem } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
@@ -44,13 +45,13 @@ export const ShoppingCashbackScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('utility.shoppingTitle')}
         subtitle="Earn guaranteed cashback on top Indian e-commerce brands"
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Banner */}
         <Card variant="gold" style={styles.bannerCard}>
           <View style={styles.bannerRow}>

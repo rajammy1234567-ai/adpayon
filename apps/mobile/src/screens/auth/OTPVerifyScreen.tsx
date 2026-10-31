@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -26,6 +28,8 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mobile, mode, testOtp } = route.params;
   const isProduction = process.env.EXPO_PUBLIC_APP_ENV === 'production';
   const { setAuthSession } = useAuthStore();
+  const inputRef = useRef<TextInput>(null);
+
   const [otp, setOtp] = useState('');
   const [currentTestOtp, setCurrentTestOtp] = useState<string | undefined>(
     isProduction ? undefined : testOtp
@@ -92,12 +96,16 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
     setError('');
 
     try {
-      await sendOtpApi({
+      const res = await sendOtpApi({
         mobile: mobile.trim(),
         purpose: getPurpose(),
       });
+      if (res.data?.testOtp && !isProduction) {
+        setCurrentTestOtp(res.data.testOtp);
+      }
       setTimer(45);
       setOtp('');
+      inputRef.current?.focus();
     } catch (err: any) {
       setError(err.message || 'Failed to resend code. Please try again.');
     } finally {
@@ -106,13 +114,16 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.container}>
       <Header title={t('auth.verifyOtp')} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
-        <View style={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.iconCircle}>
             <Text style={styles.iconEmoji}>📱</Text>
           </View>
@@ -124,7 +135,7 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
           {!isProduction && currentTestOtp ? (
             <View style={styles.stagingBanner}>
               <View style={styles.stagingBadge}>
-                <Text style={styles.stagingBadgeText}>TEST OTP — Client Staging Only</Text>
+                <Text style={styles.stagingBadgeText}>Staging test OTP — no SMS sent</Text>
               </View>
               <Text style={styles.stagingOtpCode}>{currentTestOtp}</Text>
               <Text style={styles.stagingWarning}>TEST OTP — NOT FOR PRODUCTION</Text>
@@ -143,25 +154,35 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
 
           <Card variant="elevated" style={styles.card}>
             <Text style={styles.otpLabel}>{t('auth.enterOtp')}</Text>
-            <View style={styles.otpBoxRow}>
+
+            {/* Clickable OTP Digit Box Area - Focusing input on tap */}
+            <Pressable
+              onPress={() => inputRef.current?.focus()}
+              style={styles.otpBoxRow}
+              accessibilityRole="button"
+              accessibilityLabel="Verification code input"
+            >
               {Array.from({ length: 6 }).map((_, index) => {
                 const digit = otp[index] || '';
+                const isCurrent = otp.length === index;
                 return (
                   <View
                     key={index}
                     style={[
                       styles.digitBox,
                       digit ? styles.digitBoxFilled : undefined,
+                      isCurrent ? styles.digitBoxActive : undefined,
                     ]}
                   >
                     <Text style={styles.digitText}>{digit}</Text>
                   </View>
                 );
               })}
-            </View>
+            </Pressable>
 
             {/* Hidden Input to handle keyboard */}
             <TextInput
+              ref={inputRef}
               keyboardType="number-pad"
               maxLength={6}
               value={otp}
@@ -202,7 +223,7 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
               )}
             </View>
           </Card>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -216,19 +237,20 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  content: {
+  scrollContent: {
     padding: THEME.spacing.lg,
+    paddingBottom: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
+    flexGrow: 1,
   },
   iconCircle: {
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.primarySubtle,
     borderWidth: 1.5,
-    borderColor: THEME.colors.emerald,
+    borderColor: THEME.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -252,6 +274,7 @@ const styles = StyleSheet.create({
     width: '100%',
     padding: THEME.spacing.xl,
     alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
   },
   otpLabel: {
     color: THEME.colors.textMuted,
@@ -279,8 +302,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   digitBoxFilled: {
-    borderColor: THEME.colors.emerald,
-    backgroundColor: THEME.colors.emeraldGlow,
+    borderColor: THEME.colors.primary,
+    backgroundColor: THEME.colors.primarySubtle,
+  },
+  digitBoxActive: {
+    borderColor: THEME.colors.primary,
   },
   digitText: {
     fontSize: 22,
@@ -312,17 +338,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   timerBold: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontWeight: '700',
   },
   resendLink: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontWeight: '800',
     fontSize: 14,
   },
   stagingBanner: {
     width: '100%',
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    backgroundColor: THEME.colors.goldSubtle,
     borderWidth: 1.5,
     borderColor: THEME.colors.gold,
     borderRadius: THEME.borderRadius.lg,
@@ -347,28 +373,29 @@ const styles = StyleSheet.create({
   stagingOtpCode: {
     fontSize: 28,
     fontWeight: '900',
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     letterSpacing: 6,
     marginVertical: 4,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   stagingWarning: {
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.5,
     marginBottom: 10,
   },
   stagingAutoFillBtn: {
-    backgroundColor: THEME.colors.surfaceElevated,
+    backgroundColor: THEME.colors.surface,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: THEME.borderRadius.sm,
     borderWidth: 1,
     borderColor: THEME.colors.gold,
+    ...THEME.shadows.card,
   },
   stagingAutoFillText: {
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     fontSize: 12,
     fontWeight: '700',
   },

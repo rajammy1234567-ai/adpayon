@@ -1,5 +1,5 @@
 import React from 'react';
-import { DarkTheme, NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { THEME } from '../constants/theme';
 import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
@@ -28,15 +28,15 @@ import { useAuthStore } from '../store/authStore';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavTheme = {
-  ...DarkTheme,
+  ...DefaultTheme,
   colors: {
-    ...DarkTheme.colors,
-    primary: THEME.colors.emerald,
+    ...DefaultTheme.colors,
+    primary: THEME.colors.primary,
     background: THEME.colors.background,
     card: THEME.colors.surface,
     text: THEME.colors.textPrimary,
-    border: THEME.colors.borderSubtle,
-    notification: THEME.colors.gold,
+    border: THEME.colors.border,
+    notification: THEME.colors.primary,
   },
 };
 

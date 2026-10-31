@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Sparkles,
+  Newspaper,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isSandboxMode } from '../../services/api';
@@ -33,6 +34,7 @@ export const AdminLayout: React.FC = () => {
       icon: <ShieldAlert className="w-5 h-5" />,
       highlight: true,
     },
+    { to: '/news', label: 'Curated News', icon: <Newspaper className="w-5 h-5" /> },
     { to: '/audit-logs', label: 'Audit Logs', icon: <FileText className="w-5 h-5" /> },
     { to: '/profile', label: 'Admin Profile', icon: <UserCheck className="w-5 h-5" /> },
   ];

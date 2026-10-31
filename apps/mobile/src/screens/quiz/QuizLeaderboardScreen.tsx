@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
-  SafeAreaView,
+
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { formatPaiseToRupees, QuizLeaderboardEntry } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
@@ -85,7 +86,7 @@ export const QuizLeaderboardScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('gamification.quizTitle')}
         subtitle="Win daily pool prizes up to ₹250.00 every 24 hours"

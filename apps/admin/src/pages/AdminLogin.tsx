@@ -15,6 +15,7 @@ export const AdminLogin: React.FC = () => {
   const [otp, setOtp] = useState('');
   const [mfaSessionToken, setMfaSessionToken] = useState('');
   const [maskedMobile, setMaskedMobile] = useState('');
+  const [stagingTestOtp, setStagingTestOtp] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -30,6 +31,11 @@ export const AdminLogin: React.FC = () => {
       if (data && data.mfaRequired) {
         setMfaSessionToken(data.mfaSessionToken);
         setMaskedMobile(data.maskedMobile);
+        if (data.testOtp) {
+          setStagingTestOtp(data.testOtp);
+        } else {
+          setStagingTestOtp(null);
+        }
         setStep('MFA');
       } else {
         setError('Unexpected authentication response. Please verify credentials and try again.');
@@ -175,6 +181,25 @@ export const AdminLogin: React.FC = () => {
                 Verification code dispatched to <strong className="text-white">{maskedMobile}</strong>
               </span>
             </div>
+
+            {stagingTestOtp && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-amber-300">Staging test OTP — no SMS sent:</span>
+                  <span className="font-mono text-base font-bold text-amber-400">{stagingTestOtp}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtp(stagingTestOtp);
+                    setError(null);
+                  }}
+                  className="w-full rounded-lg bg-amber-500/25 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/35 transition"
+                >
+                  ⚡ Auto-fill 2FA Code
+                </button>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">

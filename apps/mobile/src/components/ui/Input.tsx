@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -29,14 +29,19 @@ export const Input: React.FC<InputProps> = ({
   onRightIconPress,
   containerStyle,
   style,
+  onFocus,
+  onBlur,
   ...props
 }) => {
+  const [isFocused, setIsFocused] = useState(false);
+
   return (
     <View style={[styles.container, containerStyle]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <View
         style={[
           styles.inputContainer,
+          isFocused ? styles.inputFocused : undefined,
           error ? styles.inputError : undefined,
         ]}
       >
@@ -44,6 +49,14 @@ export const Input: React.FC<InputProps> = ({
         <TextInput
           placeholderTextColor={THEME.colors.textMuted}
           style={[styles.input, leftIcon ? { paddingLeft: 4 } : undefined, style]}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
           {...props}
         />
         {rightIcon ? (
@@ -81,12 +94,15 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.colors.surfaceSubtle,
-    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
     borderColor: THEME.colors.border,
     borderRadius: THEME.borderRadius.md,
     paddingHorizontal: THEME.spacing.md,
     minHeight: 50,
+  },
+  inputFocused: {
+    borderColor: THEME.colors.primary,
   },
   inputError: {
     borderColor: THEME.colors.danger,

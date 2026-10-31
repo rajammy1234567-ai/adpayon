@@ -15,6 +15,7 @@ interface AuthContextType {
     mfaSessionToken: string;
     maskedMobile: string;
     message: string;
+    testOtp?: string;
   }>;
   verifyMfa: (
     mfaSessionToken: string,

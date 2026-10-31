@@ -1,10 +1,12 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
   Modal as RNModal,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   ViewStyle,
 } from 'react-native';
@@ -32,33 +34,39 @@ export const Modal: React.FC<ModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.modalCard, contentStyle]}>
-              <View style={styles.header}>
-                {title ? <Text style={styles.title}>{title}</Text> : <View />}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={onClose}
-                  style={styles.closeBtn}
-                >
-                  <Text style={styles.closeText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-              {children}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardAvoid}
+      >
+        <Pressable style={styles.overlay} onPress={onClose}>
+          <Pressable style={[styles.modalCard, contentStyle]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.header}>
+              {title ? <Text style={styles.title}>{title}</Text> : <View />}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={onClose}
+                style={styles.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close dialog"
+              >
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
+            {children}
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
     </RNModal>
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: THEME.spacing.lg,
@@ -71,10 +79,10 @@ const styles = StyleSheet.create({
     padding: THEME.spacing.xl,
     borderWidth: 1,
     borderColor: THEME.colors.border,
-    shadowColor: '#000000',
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
     elevation: 10,
   },
   header: {
@@ -87,7 +95,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   closeBtn: {
     width: 32,
@@ -96,10 +104,12 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.surfaceSubtle,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   closeText: {
     color: THEME.colors.textSecondary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
 });

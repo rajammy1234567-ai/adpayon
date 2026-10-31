@@ -4,17 +4,18 @@ import {
   Alert,
   AppState,
   AppStateStatus,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { THEME } from '../../constants/theme';
+import { useScreenBottomSpacing } from '../../hooks/useBottomTabSpacing';
 import { RootStackParamList } from '../../navigation/types';
 import {
   startVideoSessionApi,
@@ -33,6 +34,7 @@ type VideoWatchTaskRouteProp = RouteProp<RootStackParamList, 'VideoWatchTask'>;
 export const VideoWatchTaskScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<VideoWatchTaskRouteProp>();
+  const bottomSpacing = useScreenBottomSpacing(24);
   const { taskId, assignmentId: initialAssignmentId } = route.params;
 
   const [isLoading, setIsLoading] = useState(true);
@@ -331,7 +333,7 @@ export const VideoWatchTaskScreen: React.FC = () => {
   const canClaim = isQualified && (!hasQuiz || quizSuccess);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -368,7 +370,11 @@ export const VideoWatchTaskScreen: React.FC = () => {
           />
         </View>
       ) : (
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.content, { paddingBottom: bottomSpacing }]}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Video Player Surface */}
           <View style={styles.playerWrapper}>
             <VideoView
@@ -677,7 +683,6 @@ const styles = StyleSheet.create({
     minWidth: 160,
   },
   content: {
-    flex: 1,
     padding: THEME.spacing.lg,
   },
   playerWrapper: {

@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -37,7 +37,7 @@ export const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.container}>
       <Header
         title={t('auth.resetPassword')}
         onBack={() => navigation.goBack()}
@@ -103,9 +103,9 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.primarySubtle,
     borderWidth: 1.5,
-    borderColor: THEME.colors.emerald,
+    borderColor: THEME.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -130,9 +130,10 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     padding: THEME.spacing.xl,
+    backgroundColor: THEME.colors.surface,
   },
   prefix: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontWeight: '800',
     fontSize: 15,
     marginRight: 6,

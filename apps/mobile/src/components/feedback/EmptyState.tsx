@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 13,
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
     maxWidth: 280,

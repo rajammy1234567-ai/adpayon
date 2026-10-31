@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +15,9 @@ import { formatPaiseToRupees } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { HomeNewsSection } from '../../components/home/HomeNewsSection';
 import { THEME } from '../../constants/theme';
+import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -25,6 +27,7 @@ export const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuthStore();
   const { summary } = useWalletStore();
+  const bottomSpacing = useBottomTabSpacing();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = () => {
@@ -37,14 +40,15 @@ export const DashboardScreen: React.FC = () => {
   const breakdown = summary.earningsBreakdownPaise;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomSpacing }]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={THEME.colors.emerald}
+            tintColor={THEME.colors.primary}
           />
         }
       >
@@ -74,7 +78,7 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Primary Wallet Balance Card (Emerald Luxury Glow) */}
+        {/* Primary Wallet Balance Card */}
         <Card variant="emerald" style={styles.balanceCard}>
           <View style={styles.cardHeader}>
             <View>
@@ -156,13 +160,16 @@ export const DashboardScreen: React.FC = () => {
             <View style={styles.networkMetricDivider} />
 
             <View style={styles.networkMetricBox}>
-              <Text style={[styles.networkMetricValue, { color: THEME.colors.goldLight }]}>
+              <Text style={[styles.networkMetricValue, { color: THEME.colors.primary }]}>
                 {user?.referralCode || 'ADP1000'}
               </Text>
               <Text style={styles.networkMetricLabel}>My Referral Code</Text>
             </View>
           </View>
         </Card>
+
+        {/* Compact Admin-Curated News Section */}
+        <HomeNewsSection />
 
         {/* Earnings Breakdown by Source */}
         <Card variant="default" style={styles.breakdownCard}>
@@ -207,12 +214,12 @@ export const DashboardScreen: React.FC = () => {
 
             <View style={styles.sourceItem}>
               <View style={styles.sourceIconBox}>
-                <Text style={styles.sourceEmoji}>🎯</Text>
+                <Text style={styles.sourceEmoji}>🤝</Text>
               </View>
               <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{t('dashboard.challengesEarnings')}</Text>
+                <Text style={styles.sourceName}>Team Matching</Text>
                 <Text style={styles.sourceAmount}>
-                  {formatPaiseToRupees(breakdown.challengesPaise)}
+                  {formatPaiseToRupees(breakdown.binaryPaise)}
                 </Text>
               </View>
             </View>
@@ -260,7 +267,7 @@ export const DashboardScreen: React.FC = () => {
             onPress={() => navigation.navigate('MobileRecharge')}
             style={styles.gridAction}
           >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
+            <View style={[styles.gridIcon, { backgroundColor: 'rgba(220, 38, 38, 0.08)' }]}>
               <Text style={styles.gridEmoji}>📲</Text>
             </View>
             <Text style={styles.gridLabel}>{t('dashboard.recharge')}</Text>
@@ -271,7 +278,7 @@ export const DashboardScreen: React.FC = () => {
             onPress={() => navigation.navigate('ShoppingCashback')}
             style={styles.gridAction}
           >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
+            <View style={[styles.gridIcon, { backgroundColor: 'rgba(217, 119, 6, 0.10)' }]}>
               <Text style={styles.gridEmoji}>🛍️</Text>
             </View>
             <Text style={styles.gridLabel}>{t('dashboard.shopping')}</Text>
@@ -300,7 +307,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: THEME.spacing.lg,
-    paddingBottom: 50,
   },
   topHeader: {
     flexDirection: 'row',
@@ -326,19 +332,20 @@ const styles = StyleSheet.create({
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.surface,
     borderWidth: 1,
     borderColor: THEME.colors.gold,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: THEME.borderRadius.full,
+    ...THEME.shadows.card,
   },
   streakEmoji: {
     fontSize: 14,
     marginRight: 4,
   },
   streakText: {
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -346,11 +353,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.surface,
     borderWidth: 1,
     borderColor: THEME.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
+    ...THEME.shadows.card,
   },
   inviteIcon: {
     fontSize: 18,
@@ -390,7 +398,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: THEME.colors.borderSubtle,
+    borderColor: THEME.colors.border,
   },
   metaCol: {
     flex: 1,
@@ -436,7 +444,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   networkCard: {
-    marginBottom: 20,
+    marginBottom: 16,
     padding: THEME.spacing.md,
   },
   sectionHeaderRow: {
@@ -453,7 +461,7 @@ const styles = StyleSheet.create({
   viewMoreText: {
     fontSize: 12,
     fontWeight: '700',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   networkGridRow: {
     flexDirection: 'row',
@@ -462,6 +470,8 @@ const styles = StyleSheet.create({
     borderRadius: THEME.borderRadius.md,
     paddingVertical: 14,
     paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   networkMetricBox: {
     flex: 1,
@@ -481,7 +491,7 @@ const styles = StyleSheet.create({
   networkMetricDivider: {
     width: 1,
     height: 36,
-    backgroundColor: THEME.colors.borderSubtle,
+    backgroundColor: THEME.colors.border,
   },
   breakdownCard: {
     marginBottom: 24,
@@ -497,12 +507,14 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.surfaceSubtle,
     padding: 10,
     borderRadius: THEME.borderRadius.md,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   sourceIconBox: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: THEME.colors.surfaceElevated,
+    backgroundColor: THEME.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -542,10 +554,11 @@ const styles = StyleSheet.create({
     width: '30.5%',
     backgroundColor: THEME.colors.surface,
     borderWidth: 1,
-    borderColor: THEME.colors.borderSubtle,
+    borderColor: THEME.colors.border,
     borderRadius: THEME.borderRadius.lg,
     paddingVertical: 14,
     alignItems: 'center',
+    ...THEME.shadows.card,
   },
   gridIcon: {
     width: 44,

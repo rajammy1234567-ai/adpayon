@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Alert,
   FlatList,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +25,7 @@ import { Header } from '../../components/ui/Header';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { THEME } from '../../constants/theme';
+import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -62,6 +63,7 @@ export const WalletScreen: React.FC = () => {
   });
 
   const isDemoMode = useDemoStore((s) => s.isDemoMode);
+  const bottomSpacing = useBottomTabSpacing();
 
   const handleOpenWithdraw = () => {
     if (isDemoMode) {
@@ -89,12 +91,12 @@ export const WalletScreen: React.FC = () => {
   const handleConfirmWithdrawal = async () => {
     const inr = parseFloat(withdrawAmount);
     if (isNaN(inr) || inr < 50) {
-      setWithdrawError('Minimum withdrawal amount is ₹50.00 (5,000 paise)');
+      setWithdrawError('Minimum withdrawal amount is ₹50.00');
       return;
     }
     const paise = inrToPaise(inr);
     if (paise > summary.mainBalancePaise) {
-      setWithdrawError('Insufficient main wallet balance');
+      setWithdrawError('Insufficient available balance');
       return;
     }
 
@@ -106,7 +108,7 @@ export const WalletScreen: React.FC = () => {
       setWithdrawAmount('');
       Alert.alert(
         'Withdrawal Submitted',
-        `₹${inr.toFixed(2)} payout requested via ${payoutMethod}. Held in escrow until admin approval.`
+        `₹${inr.toFixed(2)} payout requested via ${payoutMethod}. Processing typically takes 2-4 hours.`
       );
     }
   };
@@ -169,7 +171,7 @@ export const WalletScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('wallet.walletBalance')}
         subtitle={t('wallet.derivedNotice')}
@@ -178,7 +180,7 @@ export const WalletScreen: React.FC = () => {
       <View style={styles.body}>
         {isDemoMode && (
           <View style={styles.demoWarningBox}>
-            <Text style={styles.demoWarningTitle}>⚠️ DEMO MODE: SAMPLE LEDGER DATA</Text>
+            <Text style={styles.demoWarningTitle}>⚠️ DEMO MODE: SAMPLE DATA</Text>
             <Text style={styles.demoWarningText}>
               Mock INR balances are not real funds. Real payment requests, claims, and bank transfers are disabled.
             </Text>
@@ -188,8 +190,8 @@ export const WalletScreen: React.FC = () => {
         {/* Wallet Balance Card */}
         <Card variant="elevated" style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
-            <Text style={styles.balanceTitle}>Available Spendable Balance</Text>
-            <Badge label="Append-Only Ledger" variant="cyan" />
+            <Text style={styles.balanceTitle}>Available Balance</Text>
+            <Badge label="Verified Balance" variant="active" />
           </View>
 
           <Text style={styles.balanceNumber}>
@@ -198,7 +200,7 @@ export const WalletScreen: React.FC = () => {
 
           <View style={styles.escrowRow}>
             <Text style={styles.escrowText}>
-              Held in Escrow: {formatPaiseToRupees(summary.escrowBalancePaise)}
+              Processing: {formatPaiseToRupees(summary.escrowBalancePaise)}
             </Text>
             <Text style={styles.bonusText}>
               Bonus Pool: {formatPaiseToRupees(summary.bonusBalancePaise)}
@@ -251,12 +253,13 @@ export const WalletScreen: React.FC = () => {
           data={filteredTransactions}
           keyExtractor={(item) => item.id}
           renderItem={renderTransactionItem}
-          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.listContent, { paddingBottom: bottomSpacing }]}
           ListEmptyComponent={
             <EmptyState
               icon="💳"
-              title="No Ledger Transactions"
-              description="No ledger movements recorded under this category yet."
+              title="No Transactions Found"
+              description="No transactions recorded under this category yet."
             />
           }
         />
@@ -276,10 +279,10 @@ export const WalletScreen: React.FC = () => {
           {/* Limits notice */}
           <Card variant="glass" style={styles.limitsCard}>
             <Text style={styles.limitsText}>
-              • Min: ₹100.00 (10,000 paise) • Max daily: ₹10,000.00
+              • Min: ₹100.00 • Max daily: ₹10,000.00
             </Text>
             <Text style={styles.limitsText}>
-              • Escrow held until processed by payment gateway
+              • Processing typically takes 2-4 hours
             </Text>
           </Card>
 
@@ -293,7 +296,9 @@ export const WalletScreen: React.FC = () => {
                 payoutMethod === 'UPI' ? styles.methodBtnActive : undefined,
               ]}
             >
-              <Text style={styles.methodText}>📱 UPI Transfer</Text>
+              <Text style={[styles.methodText, payoutMethod === 'UPI' ? styles.methodTextActive : undefined]}>
+                📱 UPI Transfer
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -304,7 +309,9 @@ export const WalletScreen: React.FC = () => {
                 payoutMethod === 'BANK_TRANSFER' ? styles.methodBtnActive : undefined,
               ]}
             >
-              <Text style={styles.methodText}>🏦 Bank IMPS/NEFT</Text>
+              <Text style={[styles.methodText, payoutMethod === 'BANK_TRANSFER' ? styles.methodTextActive : undefined]}>
+                🏦 Bank Transfer
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -328,7 +335,7 @@ export const WalletScreen: React.FC = () => {
               value={upiId}
               onChangeText={setUpiId}
               editable={false}
-              helperText="Verified KYC UPI VPA"
+              helperText="Verified KYC UPI ID"
             />
           ) : (
             <Input
@@ -341,7 +348,7 @@ export const WalletScreen: React.FC = () => {
           )}
 
           <Button
-            title="Confirm & Deduct to Escrow"
+            title="Confirm Withdrawal"
             onPress={handleConfirmWithdrawal}
             variant="primary"
             size="lg"
@@ -366,6 +373,7 @@ const styles = StyleSheet.create({
   balanceCard: {
     padding: THEME.spacing.lg,
     marginBottom: 16,
+    backgroundColor: THEME.colors.surface,
   },
   balanceHeader: {
     flexDirection: 'row',
@@ -397,7 +405,7 @@ const styles = StyleSheet.create({
   },
   bonusText: {
     fontSize: 11,
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     fontWeight: '600',
   },
   withdrawBtn: {
@@ -407,17 +415,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   filterPill: {
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.surface,
     borderWidth: 1,
     borderColor: THEME.colors.border,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: THEME.borderRadius.full,
     marginRight: 8,
+    ...THEME.shadows.card,
   },
   filterPillActive: {
-    borderColor: THEME.colors.emerald,
-    backgroundColor: THEME.colors.emeraldGlow,
+    borderColor: THEME.colors.primary,
+    backgroundColor: THEME.colors.primarySubtle,
   },
   filterText: {
     fontSize: 12,
@@ -425,14 +434,14 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
   },
   filterTextActive: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   listContent: {
-    paddingBottom: 24,
   },
   txCard: {
     marginBottom: 10,
     padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
   },
   txRow: {
     flexDirection: 'row',
@@ -447,14 +456,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   txCreditIcon: {
-    backgroundColor: THEME.colors.emeraldGlow,
+    backgroundColor: THEME.colors.emeraldSubtle,
     borderWidth: 1,
     borderColor: THEME.colors.emerald,
   },
   txDebitIcon: {
-    backgroundColor: THEME.colors.dangerGlow,
+    backgroundColor: THEME.colors.primarySubtle,
     borderWidth: 1,
-    borderColor: THEME.colors.danger,
+    borderColor: THEME.colors.primary,
   },
   txIconText: {
     fontSize: 18,
@@ -493,7 +502,7 @@ const styles = StyleSheet.create({
     color: THEME.colors.emerald,
   },
   txAmountDebit: {
-    color: THEME.colors.danger,
+    color: THEME.colors.primary,
   },
   modalContent: {
     width: '100%',
@@ -506,10 +515,13 @@ const styles = StyleSheet.create({
   limitsCard: {
     padding: 10,
     marginBottom: 16,
+    backgroundColor: THEME.colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   limitsText: {
     fontSize: 11,
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     marginVertical: 1,
   },
   methodRow: {
@@ -527,16 +539,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   methodBtnActive: {
-    borderColor: THEME.colors.emerald,
-    backgroundColor: THEME.colors.emeraldGlow,
+    borderColor: THEME.colors.primary,
+    backgroundColor: THEME.colors.primarySubtle,
   },
   methodText: {
     fontSize: 12,
     fontWeight: '700',
-    color: THEME.colors.textPrimary,
+    color: THEME.colors.textSecondary,
+  },
+  methodTextActive: {
+    color: THEME.colors.primary,
   },
   inrPrefix: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontWeight: '800',
     fontSize: 16,
     marginRight: 4,
@@ -547,13 +562,13 @@ const styles = StyleSheet.create({
   demoWarningBox: {
     padding: 12,
     borderRadius: THEME.borderRadius.md,
-    backgroundColor: 'rgba(234, 179, 8, 0.12)',
+    backgroundColor: THEME.colors.goldSubtle,
     borderWidth: 1,
     borderColor: THEME.colors.gold,
     marginBottom: 16,
   },
   demoWarningTitle: {
-    color: THEME.colors.goldLight,
+    color: THEME.colors.gold,
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0.5,
@@ -565,4 +580,3 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 });
-

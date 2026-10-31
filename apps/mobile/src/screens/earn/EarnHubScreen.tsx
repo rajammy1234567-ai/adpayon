@@ -6,13 +6,13 @@ import {
   AppStateStatus,
   Linking,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,7 @@ import { Card } from '../../components/ui/Card';
 import { Header } from '../../components/ui/Header';
 import { Modal } from '../../components/ui/Modal';
 import { THEME } from '../../constants/theme';
+import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
 import { RootStackParamList } from '../../navigation/types';
 import {
   resolveTaskNavigation,
@@ -48,6 +49,7 @@ import { useDemoStore } from '../../store/demoStore';
 export const EarnHubScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const bottomSpacing = useBottomTabSpacing();
   const isDemoMode = useDemoStore((s) => s.isDemoMode);
 
   const [activeTab, setActiveTab] = useState<'feed' | 'history'>('feed');
@@ -579,19 +581,19 @@ export const EarnHubScreen: React.FC = () => {
         return { label: 'Market Survey', variant: 'neutral' as BadgeVariant, emoji: '📝' };
       case 'MANUAL_VERIFY':
       default:
-        return { label: 'Auditor Review', variant: 'pending' as BadgeVariant, emoji: '🔍' };
+        return { label: 'Manual Review', variant: 'pending' as BadgeVariant, emoji: '🔍' };
     }
   };
 
   const getVerificationBadge = (method: string) => {
     switch (method) {
       case 'FIRST_PARTY_ACTION':
-        return { label: 'Dwell Time', variant: 'active' as BadgeVariant };
+        return { label: 'Timer Check', variant: 'active' as BadgeVariant };
       case 'AUTHENTICATED_WEBHOOK':
-        return { label: 'HMAC Webhook', variant: 'cyan' as BadgeVariant };
+        return { label: 'Instant Check', variant: 'cyan' as BadgeVariant };
       case 'MANUAL_REVIEW':
       default:
-        return { label: 'Manual Review', variant: 'pending' as BadgeVariant };
+        return { label: 'Verification', variant: 'pending' as BadgeVariant };
     }
   };
 
@@ -608,7 +610,7 @@ export const EarnHubScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('earnHub.title') || 'Earn Hub'}
         subtitle="Complete advertiser tasks & earn promotional points"
@@ -676,13 +678,14 @@ export const EarnHubScreen: React.FC = () => {
 
       {/* Scrollable Content */}
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomSpacing }]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={THEME.colors.emerald}
-            colors={[THEME.colors.emerald]}
+            tintColor={THEME.colors.primary}
+            colors={[THEME.colors.primary]}
           />
         }
       >
@@ -1089,7 +1092,7 @@ const styles = StyleSheet.create({
     borderRadius: THEME.borderRadius.lg,
     padding: 4,
     borderWidth: 1,
-    borderColor: THEME.colors.borderSubtle,
+    borderColor: THEME.colors.border,
   },
   tabButton: {
     flex: 1,
@@ -1098,8 +1101,8 @@ const styles = StyleSheet.create({
     borderRadius: THEME.borderRadius.md,
   },
   tabButtonActive: {
-    backgroundColor: THEME.colors.surfaceElevated,
-    borderColor: THEME.colors.emeraldDark,
+    backgroundColor: THEME.colors.surface,
+    borderColor: THEME.colors.primary,
     borderWidth: 1,
   },
   tabText: {
@@ -1108,11 +1111,10 @@ const styles = StyleSheet.create({
     color: THEME.colors.textMuted,
   },
   tabTextActive: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   scroll: {
     paddingHorizontal: THEME.spacing.lg,
-    paddingBottom: 40,
   },
   loadingContainer: {
     paddingVertical: 48,

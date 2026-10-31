@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
         ) : null}
-        <View>
+        <View style={styles.titleContainer}>
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
@@ -58,13 +58,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: THEME.spacing.lg,
     paddingVertical: THEME.spacing.md,
-    backgroundColor: THEME.colors.background,
+    backgroundColor: THEME.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.borderSubtle,
+    borderBottomColor: THEME.colors.border,
   },
   left: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  titleContainer: {
     flex: 1,
   },
   backButton: {
@@ -90,7 +93,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 12,
-    color: THEME.colors.textMuted,
+    color: THEME.colors.textSecondary,
     marginTop: 2,
   },
   right: {

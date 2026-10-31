@@ -8,7 +8,6 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -16,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { THEME } from '../../constants/theme';
@@ -622,7 +622,7 @@ export const ArticleReadTaskScreen: React.FC = () => {
     : Math.min(100, Math.round((displayedElapsedSeconds / requiredDuration) * 100));
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -726,7 +726,11 @@ export const ArticleReadTaskScreen: React.FC = () => {
         </View>
       ) : isExternalArticle ? (
         /* EXTERNAL LINK MODE UI */
-        <ScrollView style={styles.articleScroll} contentContainerStyle={styles.articleScrollContent}>
+        <ScrollView
+          style={styles.articleScroll}
+          contentContainerStyle={styles.articleScrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.articleTitle}>{session?.articleTitle}</Text>
           <View style={styles.metaRow}>
             <Badge label="External Article" variant="cyan" />
@@ -834,6 +838,7 @@ export const ArticleReadTaskScreen: React.FC = () => {
         <ScrollView
           style={styles.articleScroll}
           contentContainerStyle={styles.articleScrollContent}
+          keyboardShouldPersistTaps="handled"
           onScroll={handleScroll}
           scrollEventThrottle={16}
         >
@@ -1027,7 +1032,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0,
   },
   header: {
     flexDirection: 'row',

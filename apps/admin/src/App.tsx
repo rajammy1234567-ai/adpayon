@@ -12,6 +12,7 @@ import { TaskCompletions } from './pages/TaskCompletions';
 import { FraudReviewQueue } from './pages/FraudReviewQueue';
 import { AuditLogs } from './pages/AuditLogs';
 import { AdminProfile } from './pages/AdminProfile';
+import { NewsManagement } from './pages/NewsManagement';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -56,6 +57,7 @@ export const App: React.FC = () => {
             <Route path="tasks/:id/edit" element={<CreateEditTask />} />
             <Route path="completions" element={<TaskCompletions />} />
             <Route path="fraud-queue" element={<FraudReviewQueue />} />
+            <Route path="news" element={<NewsManagement />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="profile" element={<AdminProfile />} />
           </Route>

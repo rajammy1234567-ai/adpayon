@@ -84,6 +84,8 @@ const envSchema = z
     MSG91_SENDER_ID: z.string().optional(),
     MSG91_FLOW_ID: z.string().optional(),
     STAGING_REVIEWER_MOBILES: z.string().optional(),
+    STAGING_TEST_USER_MOBILES: z.string().optional(),
+    STAGING_ADMIN_MOBILES: z.string().optional(),
     STAGING_OPERATOR_SECRET: z.string().optional(),
     TERMINAL_OTP_ENABLED: z
       .string()

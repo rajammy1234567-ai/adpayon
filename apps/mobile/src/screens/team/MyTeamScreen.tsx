@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Share,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { ReferralSummaryResponse, ReferralTreeNode } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
@@ -18,6 +18,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Header } from '../../components/ui/Header';
 import { THEME } from '../../constants/theme';
+import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
 import { useAuthStore } from '../../store/authStore';
 import {
   getReferralSummaryApi,
@@ -28,6 +29,7 @@ import {
 export const MyTeamScreen: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+  const bottomSpacing = useBottomTabSpacing();
 
   const [summary, setSummary] = useState<ReferralSummaryResponse | null>(null);
   const [directs, setDirects] = useState<ReferralTreeNode[]>([]);
@@ -88,7 +90,7 @@ export const MyTeamScreen: React.FC = () => {
       }));
       setExpandedNodes((prev) => ({ ...prev, [nodeId]: true }));
     } catch (err: any) {
-      Alert.alert('Unable to load branch', err.message || 'Could not fetch downline members.');
+      Alert.alert('Unable to load branch', err.message || 'Could not fetch team members.');
     } finally {
       setLoadingNode((prev) => ({ ...prev, [nodeId]: false }));
     }
@@ -154,14 +156,14 @@ export const MyTeamScreen: React.FC = () => {
             >
               {isNodeLoading ? (
                 <View style={styles.expandLoadingRow}>
-                  <ActivityIndicator size="small" color={THEME.colors.emerald} />
+                  <ActivityIndicator size="small" color={THEME.colors.primary} />
                   <Text style={styles.expandText}>Loading team branch...</Text>
                 </View>
               ) : (
                 <Text style={styles.expandText}>
                   {isExpanded
                     ? '▲ Collapse Team Branch'
-                    : `▼ View Downline (${node.directReferralsCount} Directs)`}
+                    : `▼ View Team Members (${node.directReferralsCount} Directs)`}
                 </Text>
               )}
             </TouchableOpacity>
@@ -179,19 +181,20 @@ export const MyTeamScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('team.myTeam')}
-        subtitle="Unilevel Referral Network & Downline"
+        subtitle="Referral Team Network"
       />
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomSpacing }]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={THEME.colors.emerald}
+            tintColor={THEME.colors.primary}
           />
         }
       >
@@ -199,7 +202,7 @@ export const MyTeamScreen: React.FC = () => {
         <Card variant="elevated" style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Your Referral Network</Text>
           <Text style={styles.summarySub}>
-            Unlimited-width unilevel team structure with real-time verified downline counts
+            Direct team members and overall network size with verified activity counts
           </Text>
 
           <View style={styles.metricsRow}>
@@ -218,10 +221,10 @@ export const MyTeamScreen: React.FC = () => {
 
             {/* Total Downline */}
             <View style={styles.metricBox}>
-              <Text style={[styles.metricVal, { color: THEME.colors.goldLight }]}>
+              <Text style={[styles.metricVal, { color: THEME.colors.gold }]}>
                 {summary ? summary.totalDownlineCount : 0}
               </Text>
-              <Text style={styles.metricLabel}>Total Downline</Text>
+              <Text style={styles.metricLabel}>Total Team</Text>
               <Text style={styles.metricActiveTag}>
                 {summary ? `${summary.activeDownlineCount} Active` : 'All Levels'}
               </Text>
@@ -263,12 +266,12 @@ export const MyTeamScreen: React.FC = () => {
         <View style={styles.treeSectionHeader}>
           <Text style={styles.treeTitle}>Team Hierarchy Tree</Text>
           <Text style={styles.treeSub}>
-            Tap any branch to expand direct and indirect downline members
+            Tap any branch to expand direct and indirect team members
           </Text>
         </View>
 
         {/* Current User Root Node */}
-        <Card variant="emerald" style={styles.rootNodeCard}>
+        <Card variant="default" style={styles.rootNodeCard}>
           <View style={styles.nodeHeader}>
             <View style={styles.nodeHeaderLeft}>
               <View style={styles.rootIconBox}>
@@ -291,8 +294,8 @@ export const MyTeamScreen: React.FC = () => {
         {/* Loading Spinner */}
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={THEME.colors.emerald} />
-            <Text style={styles.loadingText}>Loading referral genealogy...</Text>
+            <ActivityIndicator size="large" color={THEME.colors.primary} />
+            <Text style={styles.loadingText}>Loading referral team...</Text>
           </View>
         ) : error ? (
           <Card variant="default" style={styles.errorCard}>
@@ -339,11 +342,11 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: THEME.spacing.lg,
-    paddingBottom: 40,
   },
   summaryCard: {
     marginBottom: THEME.spacing.xl,
     padding: THEME.spacing.lg,
+    backgroundColor: THEME.colors.surface,
   },
   summaryTitle: {
     fontSize: 18,
@@ -365,6 +368,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 14,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   metricBox: {
     flex: 1,
@@ -389,16 +394,16 @@ const styles = StyleSheet.create({
   metricDivider: {
     width: 1,
     height: 44,
-    backgroundColor: THEME.colors.borderSubtle,
+    backgroundColor: THEME.colors.border,
   },
   sponsorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.colors.surface,
+    backgroundColor: THEME.colors.surfaceSubtle,
     padding: 10,
     borderRadius: THEME.borderRadius.sm,
     borderWidth: 1,
-    borderColor: THEME.colors.borderSubtle,
+    borderColor: THEME.colors.border,
     marginBottom: 14,
   },
   sponsorEmoji: {
@@ -426,6 +431,8 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.surfaceSubtle,
     padding: 10,
     borderRadius: THEME.borderRadius.md,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   codeContainer: {
     flexDirection: 'row',
@@ -439,19 +446,19 @@ const styles = StyleSheet.create({
   codeText: {
     fontSize: 15,
     fontWeight: '900',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     letterSpacing: 0.5,
   },
   inviteBtn: {
-    backgroundColor: THEME.colors.emerald,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    backgroundColor: THEME.colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: THEME.borderRadius.sm,
   },
   inviteBtnText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#000000',
+    color: '#FFFFFF',
   },
   treeSectionHeader: {
     marginBottom: 12,
@@ -469,13 +476,14 @@ const styles = StyleSheet.create({
   rootNodeCard: {
     marginBottom: 12,
     borderWidth: 1.5,
-    borderColor: THEME.colors.emerald,
+    borderColor: THEME.colors.primary,
+    backgroundColor: THEME.colors.surface,
   },
   rootIconBox: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: THEME.colors.emeraldGlow,
+    backgroundColor: THEME.colors.primarySubtle,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -501,6 +509,7 @@ const styles = StyleSheet.create({
   },
   nodeCard: {
     padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
   },
   nodeHeader: {
     flexDirection: 'row',
@@ -526,7 +535,7 @@ const styles = StyleSheet.create({
   levelBadgeText: {
     fontSize: 12,
     fontWeight: '800',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   nodeIdentity: {
     flex: 1,
@@ -555,7 +564,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderSubtle,
+    borderTopColor: THEME.colors.border,
     alignItems: 'center',
   },
   expandLoadingRow: {
@@ -566,11 +575,11 @@ const styles = StyleSheet.create({
   expandText: {
     fontSize: 12,
     fontWeight: '700',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
   },
   childrenBranch: {
     borderLeftWidth: 1.5,
-    borderLeftColor: THEME.colors.borderSubtle,
+    borderLeftColor: THEME.colors.border,
     paddingLeft: 6,
     marginTop: 6,
   },
@@ -586,6 +595,7 @@ const styles = StyleSheet.create({
   errorCard: {
     padding: 20,
     alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
   },
   errorText: {
     color: THEME.colors.danger,
@@ -598,6 +608,7 @@ const styles = StyleSheet.create({
   emptyCard: {
     padding: 28,
     alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
   },
   emptyIcon: {
     fontSize: 40,

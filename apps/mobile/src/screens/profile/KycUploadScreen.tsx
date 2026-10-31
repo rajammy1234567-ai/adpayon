@@ -3,12 +3,12 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { kycSubmitSchema } from '@adpayon/shared';
@@ -86,11 +86,11 @@ export const KycUploadScreen: React.FC<Props> = ({ navigation }) => {
 
       Alert.alert(
         'KYC Verified Successfully 🛡️',
-        'Your identity documents have passed automated penny drop & PAN validation. Full withdrawal limits are unlocked!',
+        'Your identity documents have been verified. Full withdrawal limits are unlocked!',
         [{ text: 'Great!', onPress: () => navigation.goBack() }]
       );
     } catch (err: any) {
-      Alert.alert('KYC Notice', err?.message || 'Verification submitted for compliance check.');
+      Alert.alert('KYC Notice', err?.message || 'Verification submitted for review.');
       updateUser({
         isKycVerified: true,
         kycDetails: {
@@ -111,10 +111,10 @@ export const KycUploadScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title="KYC Verification"
-        subtitle="Mandatory for Bank & UPI Withdrawals"
+        subtitle="Required for Bank & UPI Withdrawals"
         onBack={() => navigation.goBack()}
       />
 
@@ -122,15 +122,15 @@ export const KycUploadScreen: React.FC<Props> = ({ navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* Compliance Notice */}
           <Card variant="glass" style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>🔒 Privacy & Compliance Standard</Text>
+            <Text style={styles.noticeTitle}>🔒 Privacy & Security Protected</Text>
             <Text style={styles.noticeText}>
               • Full 12-digit Aadhaar is NEVER stored. Only last 4 digits are held.
             </Text>
             <Text style={styles.noticeText}>
-              • PAN and Bank account details are encrypted at rest using AES-256-GCM.
+              • PAN and Bank account details are encrypted at rest with banking-grade security.
             </Text>
           </Card>
 
@@ -213,7 +213,7 @@ export const KycUploadScreen: React.FC<Props> = ({ navigation }) => {
             />
 
             <Button
-              title="Submit & Encrypt KYC Details"
+              title="Submit KYC Details"
               onPress={handleSubmit}
               variant="primary"
               size="lg"
@@ -242,11 +242,14 @@ const styles = StyleSheet.create({
   noticeCard: {
     padding: 12,
     marginBottom: 16,
+    backgroundColor: THEME.colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
   noticeTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     marginBottom: 4,
   },
   noticeText: {
@@ -257,6 +260,7 @@ const styles = StyleSheet.create({
   },
   formCard: {
     padding: THEME.spacing.xl,
+    backgroundColor: THEME.colors.surface,
   },
   submitBtn: {
     marginTop: 10,

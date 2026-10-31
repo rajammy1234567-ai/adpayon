@@ -91,7 +91,8 @@ export const CreateEditTask: React.FC = () => {
   const [storeUrl, setStoreUrl] = useState('');
   const [testingSteps, setTestingSteps] = useState('');
   const [feedbackQuestion, setFeedbackQuestion] = useState('');
-  const [appAttributionMethod, setAppAttributionMethod] = useState<'IN_APP_FEEDBACK' | 'MANUAL_REVIEW'>('IN_APP_FEEDBACK');
+  const [appAttributionMethod, setAppAttributionMethod] = useState<'IN_APP_FEEDBACK' | 'MANUAL_REVIEW' | 'CLIENT_PACKAGE_PRESENCE'>('CLIENT_PACKAGE_PRESENCE');
+  const [conversionEvent, setConversionEvent] = useState<'INSTALL_ONLY' | 'FIRST_OPEN' | 'INSTALL' | 'REGISTER' | 'IN_APP_PURCHASE'>('INSTALL_ONLY');
   const [requiredTestingSeconds, setRequiredTestingSeconds] = useState<number>(60);
   const [completionCode, setCompletionCode] = useState('');
 
@@ -223,7 +224,8 @@ export const CreateEditTask: React.FC = () => {
     setTestingSteps('1. Open app and explore dashboard.\n2. Check income vs expense chart readability.\n3. Verify response time on your phone.');
     setFeedbackQuestion('How easy was it to navigate the main budget overview?');
     setRequiredTestingSeconds(60);
-    setAppAttributionMethod('IN_APP_FEEDBACK');
+    setAppAttributionMethod('CLIENT_PACKAGE_PRESENCE');
+    setConversionEvent('INSTALL_ONLY');
     setCompletionCode('');
     setKycRequired(false);
     setMinAncestryDepth(0);
@@ -380,10 +382,11 @@ export const CreateEditTask: React.FC = () => {
               setFeedbackQuestion(t.appInstallConfig.feedbackQuestion || '');
               setCompletionCode(t.appInstallConfig.completionCode || '');
               setRequiredTestingSeconds(t.appInstallConfig.requiredTestingSeconds || 60);
-              if (t.appInstallConfig.attributionMethod === 'MANUAL_REVIEW') {
-                setAppAttributionMethod('MANUAL_REVIEW');
-              } else {
-                setAppAttributionMethod('IN_APP_FEEDBACK');
+              if (t.appInstallConfig.attributionMethod) {
+                setAppAttributionMethod(t.appInstallConfig.attributionMethod as any);
+              }
+              if (t.appInstallConfig.conversionEvent) {
+                setConversionEvent(t.appInstallConfig.conversionEvent as any);
               }
             }
           }
@@ -592,17 +595,18 @@ export const CreateEditTask: React.FC = () => {
 
     let appInstallConfig: any = undefined;
     if (category === 'APP_INSTALL' || category === 'APP_TESTING') {
+      const isInstallOnly = conversionEvent === 'INSTALL_ONLY' || appAttributionMethod === 'CLIENT_PACKAGE_PRESENCE';
       appInstallConfig = {
         appName: appName.trim() || title.trim(),
         packageName: packageName.trim() || 'com.example.app',
         storeUrl: storeUrl.trim() || undefined,
         platform: 'ANDROID',
         attributionMethod: appAttributionMethod,
-        conversionEvent: 'FIRST_OPEN',
-        testingSteps: testingSteps.trim() || undefined,
-        feedbackQuestion: feedbackQuestion.trim() || undefined,
-        requiredTestingSeconds: Number(requiredTestingSeconds) || 60,
-        completionCode: completionCode.trim() || undefined,
+        conversionEvent: conversionEvent,
+        testingSteps: isInstallOnly ? undefined : (testingSteps.trim() || undefined),
+        feedbackQuestion: isInstallOnly ? undefined : (feedbackQuestion.trim() || undefined),
+        requiredTestingSeconds: isInstallOnly ? 0 : (Number(requiredTestingSeconds) || 60),
+        completionCode: isInstallOnly ? undefined : (completionCode.trim() || undefined),
       };
     }
 
@@ -610,8 +614,8 @@ export const CreateEditTask: React.FC = () => {
       category === 'ARTICLE_READ' ||
       category === 'VIDEO_WATCH' ||
       category === 'YOUTUBE_LEARNING' ||
-      (category === 'APP_INSTALL' && appAttributionMethod === 'IN_APP_FEEDBACK') ||
-      (category === 'APP_TESTING' && appAttributionMethod === 'IN_APP_FEEDBACK');
+      (category === 'APP_INSTALL' && (appAttributionMethod === 'IN_APP_FEEDBACK' || appAttributionMethod === 'CLIENT_PACKAGE_PRESENCE' || conversionEvent === 'INSTALL_ONLY')) ||
+      (category === 'APP_TESTING' && (appAttributionMethod === 'IN_APP_FEEDBACK' || appAttributionMethod === 'CLIENT_PACKAGE_PRESENCE' || conversionEvent === 'INSTALL_ONLY'));
 
     const assignedUserIds = assignedUserIdsText
       .split(',')
@@ -1745,54 +1749,46 @@ export const CreateEditTask: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Required Testing Duration (Seconds) *
+                    Conversion Mode *
                   </label>
-                  <div className="space-y-2">
-                    <input
-                      type="number"
-                      required
-                      min={10}
-                      max={1800}
-                      value={requiredTestingSeconds}
-                      onChange={(e) => {
-                        const s = parseInt(e.target.value, 10) || 60;
-                        setRequiredTestingSeconds(s);
-                        setDwellTimeSeconds(s);
-                      }}
-                      className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
-                    />
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400">Presets:</span>
-                      {[30, 60, 120, 300].map((sec) => (
-                        <button
-                          key={sec}
-                          type="button"
-                          onClick={() => {
-                            setRequiredTestingSeconds(sec);
-                            setDwellTimeSeconds(sec);
-                          }}
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
-                            requiredTestingSeconds === sec
-                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                              : 'bg-obsidian-800 text-slate-400 border-obsidian-700 hover:text-white'
-                          }`}
-                        >
-                          {sec}s
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <select
+                    value={conversionEvent}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setConversionEvent(val);
+                      if (val === 'INSTALL_ONLY') {
+                        setAppAttributionMethod('CLIENT_PACKAGE_PRESENCE');
+                      }
+                    }}
+                    className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
+                  >
+                    <option value="INSTALL_ONLY">
+                      INSTALL_ONLY — Store visit &amp; return package check (No partner callback)
+                    </option>
+                    <option value="FIRST_OPEN">
+                      FIRST_OPEN — Launch &amp; voluntary testing with feedback
+                    </option>
+                    <option value="INSTALL">
+                      INSTALL — General app install
+                    </option>
+                    <option value="REGISTER">
+                      REGISTER — Registration in partner app
+                    </option>
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Attribution & Approval Workflow *
+                    Attribution &amp; Verification Method *
                   </label>
                   <select
                     value={appAttributionMethod}
                     onChange={(e) => setAppAttributionMethod(e.target.value as any)}
                     className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
                   >
+                    <option value="CLIENT_PACKAGE_PRESENCE">
+                      CLIENT_PACKAGE_PRESENCE — Automatic presence verification on return
+                    </option>
                     <option value="IN_APP_FEEDBACK">
                       IN_APP_FEEDBACK — Immediate verification upon in-app UX feedback
                     </option>
@@ -1800,55 +1796,100 @@ export const CreateEditTask: React.FC = () => {
                       MANUAL_REVIEW — Requires Admin approval queue review before points release
                     </option>
                   </select>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Choose whether submissions are credited immediately or held for admin review.
-                  </p>
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Partner / Test Completion Code (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. PARTNER-BETA-2026 (Optional code generated inside partner app)"
-                    value={completionCode}
-                    onChange={(e) => setCompletionCode(e.target.value)}
-                    className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition font-mono text-xs"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    If configured, earners must enter this code upon returning to prove completion.
-                  </p>
-                </div>
+                {conversionEvent === 'INSTALL_ONLY' || appAttributionMethod === 'CLIENT_PACKAGE_PRESENCE' ? (
+                  <div className="md:col-span-2 rounded-xl bg-cyan-950/40 border border-cyan-800/50 p-4 text-xs text-cyan-200">
+                    <p className="font-semibold text-cyan-300 mb-1">
+                      ✓ INSTALL_ONLY &amp; CLIENT_PACKAGE_PRESENCE Mode Active
+                    </p>
+                    <p className="text-slate-300">
+                      Users tap the Play Store button to install the app. Upon returning to ADPAYON, installation is verified automatically via native package presence check. No partner postback, dwell testing timer, or feedback questions are required.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Required Testing Duration (Seconds) *
+                      </label>
+                      <div className="space-y-2">
+                        <input
+                          type="number"
+                          required
+                          min={10}
+                          max={1800}
+                          value={requiredTestingSeconds}
+                          onChange={(e) => {
+                            const s = parseInt(e.target.value, 10) || 60;
+                            setRequiredTestingSeconds(s);
+                            setDwellTimeSeconds(s);
+                          }}
+                          className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none transition"
+                        />
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400">Presets:</span>
+                          {[30, 60, 120, 300].map((sec) => (
+                            <button
+                              key={sec}
+                              type="button"
+                              onClick={() => {
+                                setRequiredTestingSeconds(sec);
+                                setDwellTimeSeconds(sec);
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                                requiredTestingSeconds === sec
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                  : 'bg-obsidian-800 text-slate-400 border-obsidian-700 hover:text-white'
+                              }`}
+                            >
+                              {sec}s
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Simple Testing Steps for Earners
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="1. Open app and explore the main dashboard.&#10;2. Check text legibility and response speed.&#10;3. Return to ADPAYON to submit feedback."
-                    value={testingSteps}
-                    onChange={(e) => setTestingSteps(e.target.value)}
-                    className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition"
-                  />
-                </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Partner / Test Completion Code (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. PARTNER-BETA-2026 (Optional code generated inside partner app)"
+                        value={completionCode}
+                        onChange={(e) => setCompletionCode(e.target.value)}
+                        className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition font-mono text-xs"
+                      />
+                    </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Feedback Prompt Question
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. How easy was it to navigate the main budget overview?"
-                    value={feedbackQuestion}
-                    onChange={(e) => setFeedbackQuestion(e.target.value)}
-                    className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Earners answer this question directly inside ADPAYON to verify their task. No device scanning or screenshot uploads required.
-                  </p>
-                </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Simple Testing Steps for Earners
+                      </label>
+                      <textarea
+                        rows={3}
+                        placeholder="1. Open app and explore the main dashboard.&#10;2. Check text legibility and response speed.&#10;3. Return to ADPAYON to submit feedback."
+                        value={testingSteps}
+                        onChange={(e) => setTestingSteps(e.target.value)}
+                        className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Feedback Prompt Question
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. How easy was it to navigate the main budget overview?"
+                        value={feedbackQuestion}
+                        onChange={(e) => setFeedbackQuestion(e.target.value)}
+                        className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none transition"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

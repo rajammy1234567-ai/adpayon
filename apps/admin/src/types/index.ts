@@ -79,8 +79,8 @@ export interface AppInstallConfig {
   packageName: string;
   platform: 'ANDROID' | 'IOS' | 'CROSS_PLATFORM';
   storeUrl: string;
-  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK' | 'PARTNER_CALLBACK' | 'USAGE_STATS';
-  conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE';
+  attributionMethod: 'SIGNED_POSTBACK' | 'MANUAL_REVIEW' | 'IN_APP_FEEDBACK' | 'PARTNER_CALLBACK' | 'USAGE_STATS' | 'CLIENT_PACKAGE_PRESENCE';
+  conversionEvent: 'INSTALL' | 'FIRST_OPEN' | 'REGISTER' | 'IN_APP_PURCHASE' | 'INSTALL_ONLY';
   testingSteps?: string;
   feedbackQuestion?: string;
   requiredTestingSeconds?: number;
@@ -220,3 +220,18 @@ export interface Pagination {
   total: number;
   totalPages: number;
 }
+
+export interface AdminNewsArticle {
+  id: string;
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  category: string;
+  isPublished: boolean;
+  priority: number;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

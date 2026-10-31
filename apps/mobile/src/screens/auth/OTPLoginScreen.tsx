@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -119,11 +119,15 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
     setErrors({});
 
     try {
-      await sendOtpApi({
+      const res = await sendOtpApi({
         mobile: mobile.trim(),
         purpose: 'LOGIN',
       });
-      navigation.navigate('OTPVerify', { mobile: mobile.trim(), mode: 'LOGIN' });
+      navigation.navigate('OTPVerify', {
+        mobile: mobile.trim(),
+        mode: 'LOGIN',
+        testOtp: res.data?.testOtp,
+      });
     } catch (err: any) {
       setErrors({ general: err.message || 'Failed to dispatch login OTP. Please try again.' });
     } finally {
@@ -132,12 +136,12 @@ export const OTPLoginScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconCircle}>

@@ -108,14 +108,17 @@ export function isStagingTestAllowed(mobile: string, dbNameOverride?: string): b
   if (!isStagingEnv || !isStagingDb) {
     return false;
   }
-  const configured = env.STAGING_REVIEWER_MOBILES?.trim();
-  // 1. STAGING_REVIEWER_MOBILES must be mandatory and non-empty
-  if (!configured || configured.length === 0) {
+  const configuredReviewers = env.STAGING_REVIEWER_MOBILES?.trim() || '';
+  const configuredTestUsers = env.STAGING_TEST_USER_MOBILES?.trim() || '';
+  const combined = [configuredReviewers, configuredTestUsers].filter(Boolean).join(',');
+
+  // 1. At least one allowlist must be mandatory and non-empty
+  if (!combined || combined.length === 0) {
     return false;
   }
   // 2. Reject wildcard (*) and unrestricted mobile-number access
-  if (configured.includes('*') || configured.toUpperCase() === 'ALL') {
-    logger.warn('Wildcard in STAGING_REVIEWER_MOBILES is strictly prohibited. Refusing in-app test OTP.');
+  if (combined.includes('*') || combined.toUpperCase().includes('ALL')) {
+    logger.warn('Wildcard in staging test allowlist is strictly prohibited. Refusing in-app test OTP.');
     return false;
   }
   // 3. Only explicitly allowlisted test mobile numbers can receive an in-app test OTP
@@ -125,7 +128,7 @@ export function isStagingTestAllowed(mobile: string, dbNameOverride?: string): b
   };
 
   const target = normalize10(mobile);
-  const allowlist = configured
+  const allowlist = combined
     .split(',')
     .map((m) => normalize10(m.trim()))
     .filter(Boolean);

@@ -5,7 +5,6 @@ import {
   AppState,
   AppStateStatus,
   Linking,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useIsFocused } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { THEME } from '../../constants/theme';
@@ -725,7 +725,7 @@ export const AppInstallTaskScreen: React.FC = () => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={THEME.colors.emerald} />
           <Text style={styles.loadingText}>Loading App Discovery Details...</Text>
@@ -736,7 +736,7 @@ export const AppInstallTaskScreen: React.FC = () => {
 
   if (initError || !task) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
         <View style={styles.centerContainer}>
           <Text style={styles.errorTitle}>App Discovery Notice</Text>
           <Text style={styles.errorText}>{initError || 'This task is currently unavailable.'}</Text>
@@ -762,8 +762,8 @@ export const AppInstallTaskScreen: React.FC = () => {
     ? 'App Installation'
     : task.appInstallConfig?.conversionEvent || 'FIRST_OPEN';
   const verificationMethodDisplay = isInstallOnly
-    ? 'Device Package Presence'
-    : 'Partner S2S Postback';
+    ? 'Automatic installation check'
+    : 'Partner store confirmation';
   const packageName = task.appInstallConfig?.packageName || 'Unavailable';
   const appName = task.appInstallConfig?.appName || task.title;
   const isSyntheticTest = Boolean(
@@ -773,7 +773,7 @@ export const AppInstallTaskScreen: React.FC = () => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -801,6 +801,7 @@ export const AppInstallTaskScreen: React.FC = () => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Sponsored Disclosure Banner */}
         <View style={styles.disclosureBanner}>
@@ -879,7 +880,7 @@ export const AppInstallTaskScreen: React.FC = () => {
         {/* Scoped Android Package Installation Check Card */}
         <View style={styles.installCard}>
           <View style={styles.installHeaderRow}>
-            <Text style={styles.installSectionTitle}>Device Package Presence</Text>
+            <Text style={styles.installSectionTitle}>Automatic Installation Check</Text>
             {isVerifyingReward || currentInstallStatus === 'CHECKING' ? (
               <Badge label="CHECKING…" variant="cyan" />
             ) : wasPreinstalled || (initialInstallStatus === 'INSTALLED' && displayStatus !== 'VERIFIED') ? (
@@ -901,7 +902,7 @@ export const AppInstallTaskScreen: React.FC = () => {
             ) : currentInstallStatus === 'CHECKING' ? (
               <View style={styles.installStatusRow}>
                 <ActivityIndicator size="small" color={THEME.colors.cyan} />
-                <Text style={styles.installText}>Checking scoped package presence for {packageName}…</Text>
+                <Text style={styles.installText}>Checking app installation for {packageName}…</Text>
               </View>
             ) : wasPreinstalled || (initialInstallStatus === 'INSTALLED' && displayStatus !== 'VERIFIED') ? (
               <View>
@@ -974,7 +975,7 @@ export const AppInstallTaskScreen: React.FC = () => {
             )}
 
             <Text style={styles.installDisclaimer}>
-              Client-reported package presence is not proof of Play Store source, fresh acquisition, registration, cart activity, or purchase. Pre-installed apps and unverified states do not auto-credit rewards.
+              App installation must be completed via official store listing to receive promotional reward points.
             </Text>
           </View>
         </View>
@@ -982,7 +983,7 @@ export const AppInstallTaskScreen: React.FC = () => {
         {/* Status & Verification Explanation Card */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeaderRow}>
-            <Text style={styles.statusSectionTitle}>Attribution Status</Text>
+            <Text style={styles.statusSectionTitle}>Task Status</Text>
             <Badge label={badgeConfig.label} variant={badgeConfig.variant} />
           </View>
 
@@ -991,7 +992,7 @@ export const AppInstallTaskScreen: React.FC = () => {
               <Text style={styles.verifiedTitle}>🎉 Installation Verified & Rewarded!</Text>
               <Text style={styles.verifiedText}>
                 {verifySuccessMessage ||
-                  `Package presence has been verified on this device. +${
+                  `App installation has been verified on this device. +${
                     verifiedPoints ?? task.rewardPoints
                   } Promotional PTS have been awarded to your account.`}
               </Text>
@@ -1005,7 +1006,7 @@ export const AppInstallTaskScreen: React.FC = () => {
                   Please complete installation from Google Play. When you return to AdPayOn, installation is automatically verified.
                 </Text>
                 <Text style={styles.pendingSubtext}>
-                  Scoped check verifies presence of {packageName} without accessing personal data.
+                  AdPayOn verifies installation of {packageName} safely without accessing personal data.
                 </Text>
               </View>
             </View>
@@ -1015,8 +1016,8 @@ export const AppInstallTaskScreen: React.FC = () => {
               <View style={styles.pendingTextContainer}>
                 <Text style={styles.pendingTitle}>Awaiting Partner Attribution</Text>
                 <Text style={styles.pendingText}>
-                  Store opened. AdPayOn awards points exclusively when the advertiser or Mobile Measurement Partner verifies your{' '}
-                  <Text style={styles.boldText}>{conversionRequirement}</Text> via authenticated server-to-server postback.
+                  Store opened. AdPayOn awards points when the advertiser verifies your{' '}
+                  <Text style={styles.boldText}>{conversionRequirement}</Text> via official partner confirmation.
                 </Text>
                 <Text style={styles.pendingSubtext}>
                   Status updates automatically. You can also tap Sync at any time.

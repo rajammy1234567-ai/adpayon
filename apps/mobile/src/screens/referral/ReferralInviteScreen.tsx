@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  SafeAreaView,
+
   ScrollView,
   Share,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -42,13 +43,13 @@ export const ReferralInviteScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('referral.title')}
-        subtitle="Invite partners and build your verified unilevel team"
+        subtitle="Invite friends and build your verified referral team"
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Referral Code Card */}
         <Card variant="gold" style={styles.codeCard}>
           <Text style={styles.codeLabel}>{t('referral.yourCode')}</Text>

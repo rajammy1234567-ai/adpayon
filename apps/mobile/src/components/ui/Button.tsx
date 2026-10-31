@@ -68,22 +68,22 @@ export const Button: React.FC<ButtonProps> = ({
       case 'primary':
         return {
           ...base,
-          backgroundColor: THEME.colors.emerald,
-          shadowColor: THEME.colors.emerald,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 4,
+          backgroundColor: THEME.colors.primary,
+          shadowColor: THEME.colors.primary,
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.25,
+          shadowRadius: 6,
+          elevation: 3,
         };
       case 'gold':
         return {
           ...base,
-          backgroundColor: THEME.colors.gold,
+          backgroundColor: THEME.colors.goldLight,
           shadowColor: THEME.colors.gold,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 4,
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.2,
+          shadowRadius: 6,
+          elevation: 3,
         };
       case 'secondary':
         return {
@@ -97,7 +97,7 @@ export const Button: React.FC<ButtonProps> = ({
           ...base,
           backgroundColor: 'transparent',
           borderWidth: 1.5,
-          borderColor: THEME.colors.emerald,
+          borderColor: THEME.colors.primary,
         };
       case 'danger':
         return {
@@ -134,11 +134,10 @@ export const Button: React.FC<ButtonProps> = ({
     switch (variant) {
       case 'primary':
       case 'gold':
-        return { ...base, color: '#000000' };
-      case 'outline':
-        return { ...base, color: THEME.colors.emerald };
       case 'danger':
         return { ...base, color: '#FFFFFF' };
+      case 'outline':
+        return { ...base, color: THEME.colors.primary };
       case 'ghost':
       case 'secondary':
       default:
@@ -156,7 +155,7 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'primary' || variant === 'gold' ? '#000000' : '#FFFFFF'}
+          color={variant === 'primary' || variant === 'gold' || variant === 'danger' ? '#FFFFFF' : THEME.colors.textPrimary}
         />
       ) : (
         <>

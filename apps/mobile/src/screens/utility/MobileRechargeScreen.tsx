@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import {
   Alert,
   FlatList,
-  SafeAreaView,
+
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { formatPaiseToRupees, RechargePlan } from '@adpayon/shared';
 import { Button } from '../../components/ui/Button';
@@ -59,13 +60,13 @@ export const MobileRechargeScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title={t('utility.rechargeTitle')}
         subtitle="Direct wallet payment with instant recharge operator routing"
       />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Wallet Balance Strip */}
         <Card variant="glass" style={styles.balanceStrip}>
           <Text style={styles.balanceStripLabel}>Available Spendable Balance:</Text>

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
   Dimensions,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -25,7 +25,7 @@ const SLIDES = [
   {
     icon: '💎',
     title: 'Fintech Earning Engine',
-    desc: 'Watch ads, complete partner offers, and solve daily quizzes to earn real money directly into your double-entry wallet ledger.',
+    desc: 'Watch ads, complete partner offers, and solve daily quizzes to earn real money directly into your earnings wallet.',
   },
   {
     icon: '🌳',
@@ -40,7 +40,7 @@ const SLIDES = [
   {
     icon: '⚡',
     title: 'Instant KYC Withdrawals',
-    desc: 'Bank-grade security, instant UPI transfers, and mobile recharges with append-only ledger audit integrity.',
+    desc: 'Bank-grade security, instant UPI transfers, and mobile recharges with bank-grade security and fast payouts.',
   },
 ];
 
@@ -65,7 +65,7 @@ export const IntroScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.container}>
       {/* Top Bar with Language Toggle */}
       <View style={styles.topBar}>
         <View style={styles.brandRow}>
@@ -140,7 +140,6 @@ export const IntroScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -189,17 +188,13 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: THEME.colors.surfaceSubtle,
+    backgroundColor: THEME.colors.surface,
     borderWidth: 2,
-    borderColor: THEME.colors.emerald,
+    borderColor: THEME.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 32,
-    shadowColor: THEME.colors.emerald,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 8,
+    ...THEME.shadows.floating,
   },
   iconEmoji: {
     fontSize: 52,
@@ -233,7 +228,7 @@ const styles = StyleSheet.create({
   },
   activeDot: {
     width: 24,
-    backgroundColor: THEME.colors.emerald,
+    backgroundColor: THEME.colors.primary,
   },
   actions: {
     paddingBottom: THEME.spacing.lg,
@@ -246,14 +241,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: THEME.borderRadius.lg,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    backgroundColor: THEME.colors.primarySubtle,
     borderWidth: 1.5,
-    borderColor: THEME.colors.emerald,
+    borderColor: THEME.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   demoBtnText: {
-    color: THEME.colors.emerald,
+    color: THEME.colors.primary,
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.3,
