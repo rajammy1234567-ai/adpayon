@@ -1,158 +1,54 @@
 import { create } from 'zustand';
-import {
-  LedgerTransactionItem,
-  SourceCategory,
-  WalletSummary,
-} from '@adpayon/shared';
-import { MOCK_TRANSACTIONS, MOCK_WALLET_SUMMARY } from '../services/mockData';
-import {
-  fetchWalletSummaryApi,
-  fetchWalletTransactionsApi,
-  submitWithdrawalApi,
-} from '../services/api/wallet.api';
-
+import { LedgerTransactionItem, SourceCategory, WalletSummary } from '@adpayon/shared';
+import { fetchWalletSummaryApi, fetchWalletTransactionsApi, submitWithdrawalApi } from '../services/api/wallet.api';
+const emptySummary: WalletSummary = {
+  mainBalancePaise: 0, bonusBalancePaise: 0, escrowBalancePaise: 0, todayEarningsPaise: 0,
+  yesterdayEarningsPaise: 0, lifetimeEarningsPaise: 0,
+  earningsBreakdownPaise: { adsPaise: 0, referralsPaise: 0, challengesPaise: 0, binaryPaise: 0, rankRewardsPaise: 0, gamificationPaise: 0 },
+};
 interface WalletState {
-  summary: WalletSummary;
-  transactions: LedgerTransactionItem[];
-  filter: SourceCategory;
-  isLoading: boolean;
-  setFilter: (filter: SourceCategory) => void;
-  fetchSummary: () => Promise<void>;
-  fetchTransactions: () => Promise<void>;
+  summary: WalletSummary; transactions: LedgerTransactionItem[]; filter: SourceCategory; isLoading: boolean; error: string | null; promotionalPoints: number;
+  setFilter: (filter: SourceCategory) => void; fetchSummary: () => Promise<void>; fetchTransactions: () => Promise<void>;
   recordWithdrawal: (amountPaise: number, payoutMethod: string, upiId?: string) => Promise<boolean>;
   claimReward: (amountPaise: number, category: SourceCategory, description: string) => void;
+  reset: () => void;
 }
-
+let walletGeneration = 0;
 export const useWalletStore = create<WalletState>((set, get) => ({
-  summary: MOCK_WALLET_SUMMARY,
-  transactions: MOCK_TRANSACTIONS,
-  filter: 'ALL',
-  isLoading: false,
-
-  setFilter: (filter) => set({ filter }),
-
+  summary: emptySummary, transactions: [], filter: 'ALL', isLoading: false, error: null, promotionalPoints: 0,
+  reset: () => { walletGeneration++; set({ summary: emptySummary, transactions: [], error: null, promotionalPoints: 0 }); },
+  setFilter: filter => set({ filter }),
   fetchSummary: async () => {
+    const generation = walletGeneration;
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true });
       const data = await fetchWalletSummaryApi();
-      set((state) => ({
-        isLoading: false,
-        summary: {
-          ...state.summary,
-          mainBalancePaise: data.availableBalancePaise,
-          escrowBalancePaise: data.reservedWithdrawalPaise,
-          lifetimeEarningsPaise: data.totalEarnedPaise,
-        },
-      }));
-    } catch {
-      // In demo mode or offline, keep current state
-      set({ isLoading: false });
-    }
+      if (generation !== walletGeneration) return;
+      set({ summary: { ...emptySummary, mainBalancePaise: data.availableBalancePaise, escrowBalancePaise: data.reservedWithdrawalPaise, lifetimeEarningsPaise: data.totalEarnedPaise }, promotionalPoints: data.pointsBalance, isLoading: false });
+    } catch (e: any) { if (generation === walletGeneration) set({ summary: emptySummary, promotionalPoints: 0, isLoading: false, error: e.message || 'Could not load your wallet.' }); }
   },
-
   fetchTransactions: async () => {
+    const generation = walletGeneration;
     try {
-      set({ isLoading: true });
       const data = await fetchWalletTransactionsApi();
-      if (data && Array.isArray(data.transactions) && data.transactions.length > 0) {
-        const mapped: LedgerTransactionItem[] = data.transactions.map((tx) => ({
-          id: tx.id,
-          idempotencyKey: `tx-${tx.id}`,
-          type: tx.amountPaise >= 0 ? 'CHALLENGE_REWARD' : 'WITHDRAWAL_REQUEST',
-          sourceCategory: tx.amountPaise >= 0 ? 'CHALLENGES' : 'WITHDRAWAL',
-          amountPaise: Math.abs(tx.amountPaise),
-          description: tx.notes || (tx.amountPaise >= 0 ? 'Verified Task Reward' : 'Withdrawal Hold'),
-          status: tx.status === 'CONFIRMED' ? 'CREDITED' : tx.status === 'REVERSED' ? 'REJECTED' : 'PENDING',
-          createdAt: tx.createdAt,
-        }));
-        set({ transactions: mapped, isLoading: false });
-      } else {
-        set({ isLoading: false });
-      }
-    } catch {
-      set({ isLoading: false });
-    }
+      if (generation !== walletGeneration) return;
+      if (!Array.isArray(data.transactions)) throw new Error('Invalid wallet history response.');
+      const transactions: LedgerTransactionItem[] = data.transactions.map(tx => ({
+        displayPoints: tx.rewardKind === 'PROMOTIONAL_POINTS' ? tx.pointsEquivalent : undefined,
+        id: tx.id, idempotencyKey: `tx-${tx.id}`,
+        type: tx.type === 'WITHDRAWAL_PAID' ? 'WITHDRAWAL_PAYOUT' : tx.type === 'WITHDRAWAL_HOLD' ? 'WITHDRAWAL_REQUEST' : tx.type === 'REFERRAL_COMMISSION' ? 'LEVEL_COMMISSION' : 'CHALLENGE_REWARD',
+        sourceCategory: tx.type.startsWith('WITHDRAWAL') ? 'WITHDRAWAL' : tx.type === 'REFERRAL_COMMISSION' ? 'REFERRALS' : 'CHALLENGES',
+        amountPaise: Math.abs(tx.amountPaise), description: tx.rewardKind === 'PROMOTIONAL_POINTS' ? `${tx.notes} · ${tx.pointsEquivalent} promotional points (not cash)` : tx.notes,
+        status: tx.status === 'CONFIRMED' ? 'CREDITED' : tx.status === 'REVERSED' ? 'REJECTED' : 'PENDING', createdAt: tx.createdAt,
+      }));
+      set({ transactions });
+    } catch (e: any) { if (generation === walletGeneration) set({ transactions: [], error: e.message || 'Could not load wallet history.' }); }
   },
-
   recordWithdrawal: async (amountPaise, payoutMethod, upiId) => {
-    try {
-      set({ isLoading: true });
-      await submitWithdrawalApi({
-        amountPaise,
-        payoutMode: payoutMethod === 'BANK_TRANSFER' ? 'BANK_TRANSFER' : 'UPI',
-        beneficiaryDetails: {
-          upiId: upiId || 'earner@upi',
-        },
-      });
-
-      const newTx: LedgerTransactionItem = {
-        id: `tx-wd-${Date.now()}`,
-        idempotencyKey: `idemp-wd-${Date.now()}`,
-        type: 'WITHDRAWAL_REQUEST',
-        sourceCategory: 'WITHDRAWAL',
-        amountPaise,
-        description: `Withdrawal request via ${payoutMethod} (Queued for Review)`,
-        status: 'PENDING',
-        createdAt: new Date().toISOString(),
-      };
-
-      set((state) => ({
-        isLoading: false,
-        summary: {
-          ...state.summary,
-          mainBalancePaise: Math.max(0, state.summary.mainBalancePaise - amountPaise),
-          escrowBalancePaise: state.summary.escrowBalancePaise + amountPaise,
-        },
-        transactions: [newTx, ...state.transactions],
-      }));
-      return true;
-    } catch (err) {
-      set({ isLoading: false });
-      // In offline/demo mode, fallback to optimistic UI
-      const newTx: LedgerTransactionItem = {
-        id: `tx-wd-${Date.now()}`,
-        idempotencyKey: `idemp-wd-${Date.now()}`,
-        type: 'WITHDRAWAL_REQUEST',
-        sourceCategory: 'WITHDRAWAL',
-        amountPaise,
-        description: `Withdrawal request via ${payoutMethod} (Demo Mode)`,
-        status: 'PENDING',
-        createdAt: new Date().toISOString(),
-      };
-
-      set((state) => ({
-        summary: {
-          ...state.summary,
-          mainBalancePaise: Math.max(0, state.summary.mainBalancePaise - amountPaise),
-          escrowBalancePaise: state.summary.escrowBalancePaise + amountPaise,
-        },
-        transactions: [newTx, ...state.transactions],
-      }));
-      return true;
-    }
+    if (payoutMethod !== 'UPI' || !upiId) { set({ error: 'Enter valid payout details.' }); return false; }
+    try { await submitWithdrawalApi({ amountPaise, payoutMode: 'UPI', beneficiaryDetails: { upiId } }); await Promise.all([get().fetchSummary(), get().fetchTransactions()]); return true; }
+    catch (e: any) { set({ error: e.message || 'Withdrawal was not submitted.' }); return false; }
   },
-
-  claimReward: (amountPaise, category, description) =>
-    set((state) => {
-      const newTx: LedgerTransactionItem = {
-        id: `tx-rew-${Date.now()}`,
-        idempotencyKey: `idemp-rew-${Date.now()}`,
-        type: 'CHALLENGE_REWARD',
-        sourceCategory: category,
-        amountPaise,
-        description,
-        status: 'CREDITED',
-        createdAt: new Date().toISOString(),
-      };
-
-      return {
-        summary: {
-          ...state.summary,
-          mainBalancePaise: state.summary.mainBalancePaise + amountPaise,
-          todayEarningsPaise: state.summary.todayEarningsPaise + amountPaise,
-          lifetimeEarningsPaise: state.summary.lifetimeEarningsPaise + amountPaise,
-        },
-        transactions: [newTx, ...state.transactions],
-      };
-    }),
+  // Local gamification screens cannot mint real wallet funds. Only the server can credit rewards.
+  claimReward: () => { set({ error: 'This reward requires server verification. No wallet credit was made.' }); },
 }));

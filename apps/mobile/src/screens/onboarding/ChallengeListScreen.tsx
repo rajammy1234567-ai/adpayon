@@ -215,10 +215,10 @@ export const ChallengeListScreen: React.FC<Props> = ({ navigation }) => {
                       {item.category === 'IN_APP_ACTION'
                         ? '📲'
                         : item.category === 'PARTNER_WEBHOOK'
-                        ? '🔗'
-                        : item.category === 'SURVEY'
-                        ? '📝'
-                        : '🔍'}
+                          ? '🔗'
+                          : item.category === 'SURVEY'
+                            ? '📝'
+                            : '🔍'}
                     </Text>
                   </View>
 

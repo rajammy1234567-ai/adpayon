@@ -33,6 +33,18 @@ export const AdminLogin: React.FC = () => {
         setMaskedMobile(data.maskedMobile);
         if (data.testOtp) {
           setStagingTestOtp(data.testOtp);
+        } else if (isSandboxMode) {
+          try {
+            const devRes = await fetch(`/api/dev/otp/${encodeURIComponent(mobile.trim())}`);
+            const devData = await devRes.json();
+            if (devData.success && devData.otp) {
+              setStagingTestOtp(devData.otp);
+            } else {
+              setStagingTestOtp(null);
+            }
+          } catch {
+            setStagingTestOtp(null);
+          }
         } else {
           setStagingTestOtp(null);
         }

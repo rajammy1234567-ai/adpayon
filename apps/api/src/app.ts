@@ -14,6 +14,8 @@ import { webhookTaskRouter } from './routes/webhookTask.routes';
 import { walletRouter } from './routes/wallet.routes';
 import { privacyRouter } from './routes/privacy.routes';
 import { newsRouter } from './routes/news.routes';
+import { categoryRouter } from './routes/category.routes';
+import { offerRouter } from './routes/offer.routes';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -94,6 +96,8 @@ export function createApp(): Application {
   app.use('/api', webhookTaskRouter);
   app.use('/api', walletRouter);
   app.use('/api', newsRouter);
+  app.use('/api', categoryRouter);
+  app.use('/api', offerRouter);
   app.use('/', privacyRouter);
 
   // 404 Fallback

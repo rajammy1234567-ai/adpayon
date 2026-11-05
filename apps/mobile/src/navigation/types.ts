@@ -2,6 +2,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type MainTabParamList = {
   Dashboard: undefined;
+  Categories: undefined;
   Wallet: undefined;
   Team: undefined;
   Earn: undefined;
@@ -17,6 +18,7 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   OnboardingChallenges: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList>;
+  OfferDetails: { offerId: string; slug?: string; refCode?: string };
   ReferralInvite: undefined;
   QuizLeaderboard: undefined;
   ScratchEarn: undefined;

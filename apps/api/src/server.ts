@@ -1,3 +1,6 @@
+import { OfferSubmission } from './models/OfferSubmission';
+import { RedemptionPolicy } from './models/RedemptionPolicy';
+import { WalletLedgerEntry, WithdrawalRequest } from './models';
 import { Server } from 'node:http';
 import { app } from './app';
 import { env } from './config/env';
@@ -55,6 +58,9 @@ async function startServer(): Promise<void> {
   if (env.MONGODB_URI) {
     try {
       await connectMongo();
+      // Financial idempotency must be enforced before accepting HTTP writes.
+      // createIndexes only adds declared indexes; it never drops or resets collections.
+      await Promise.all([OfferSubmission.createIndexes(), RedemptionPolicy.createIndexes(), WalletLedgerEntry.createIndexes(), WithdrawalRequest.createIndexes()]);
     } catch (err) {
       logger.fatal({ err }, 'Fatal: MongoDB connection or identity verification failed. Halting server startup.');
       process.exit(1);

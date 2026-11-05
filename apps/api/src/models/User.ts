@@ -4,6 +4,7 @@ export type UserRole = 'USER' | 'ADMIN' | 'SUPPORT' | 'FINANCE_AUDITOR';
 export type UserStatus = 'PENDING_VERIFICATION' | 'ACTIVE' | 'SUSPENDED' | 'BANNED';
 
 export interface IUser extends Document {
+  walletMutationVersion?: number;
   _id: Types.ObjectId;
   mobile?: string;
   email?: string;
@@ -30,6 +31,7 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
+    walletMutationVersion: { type: Number, default: 0 },
     mobile: {
       type: String,
       required: false,

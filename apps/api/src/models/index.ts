@@ -16,3 +16,5 @@ export * from './WithdrawalRequest';
 export * from './YouTubeLearningSession';
 export * from './ExternalLinkSession';
 export * from './NewsArticle';
+export * from './Category';
+export * from './Offer';

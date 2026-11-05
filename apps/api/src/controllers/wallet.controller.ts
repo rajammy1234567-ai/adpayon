@@ -1,3 +1,8 @@
+import crypto from 'node:crypto';
+import mongoose, { ClientSession } from 'mongoose';
+import { ledgerBalance } from '../services/wallet/balance';
+import { verifyQuote, Quote } from '../services/wallet/redemptionQuote';
+import { RedemptionPolicy } from '../models/RedemptionPolicy';
 import { Response } from 'express';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -12,63 +17,26 @@ import {
 } from '../models';
 import { logger } from '../config/logger';
 
-// 1 point = 1 paisa (100 points = ₹1.00)
-const POINTS_PER_RUPEE = 100;
+import {
+  POINTS_TO_PAISE_RATIO,
+  POINTS_PER_RUPEE,
+  pointsToPaise,
+  pointsToRupees,
+} from '@adpayon/shared';
+
+// Integer accounting: 1000 points = ₹100.00 (1 point = 10 paise)
 const MIN_WITHDRAWAL_PAISE = 5000; // ₹50 minimum withdrawal
 
 /**
  * Helper to compute authoritative user balance from double-entry ledger and verified completions.
  */
-async function computeUserBalance(userId: Types.ObjectId) {
-  // Aggregate from WalletLedgerEntry
-  const ledgerEntries = await WalletLedgerEntry.find({ userId });
-
-  let totalCreditsPaise = 0;
-  let totalHoldsPaise = 0;
-  let totalWithdrawnPaise = 0;
-  let totalPromotionalPoints = 0;
-
-  for (const entry of ledgerEntries) {
-    if (entry.status === 'CONFIRMED') {
-      if (entry.entryType === 'REFERRAL_COMMISSION' || entry.entryType === 'ADMIN_ADJUSTMENT') {
-        // Withdrawable cash earnings in paise
-        totalCreditsPaise += Math.max(0, entry.amountPaise);
-      } else if (entry.entryType === 'TASK_REWARD') {
-        // Promotional points (non-withdrawable currency)
-        totalPromotionalPoints += Math.max(0, entry.pointsEquivalent || 0);
-      } else if (entry.entryType === 'WITHDRAWAL_PAID') {
-        totalWithdrawnPaise += Math.abs(entry.amountPaise);
-      }
-    } else if (entry.status === 'PENDING' && entry.entryType === 'WITHDRAWAL_HOLD') {
-      totalHoldsPaise += Math.abs(entry.amountPaise);
-    }
-  }
-
-  // Also count confirmed task completions that may not yet have a ledger record (for backwards compatibility)
-  const completions = await TaskCompletion.find({ userId, status: 'VERIFIED' });
-  const recordedCompletionIds = new Set(
-    ledgerEntries
-      .filter((e) => e.referenceEntity === 'TaskCompletion' && e.referenceId)
-      .map((e) => e.referenceId!.toString())
-  );
-
-  for (const c of completions) {
-    if (!recordedCompletionIds.has(c._id.toString())) {
-      totalPromotionalPoints += c.rewardPoints;
-    }
-  }
-
-  const confirmedBalancePaise = totalCreditsPaise;
-  const availableBalancePaise = Math.max(0, confirmedBalancePaise - totalHoldsPaise - totalWithdrawnPaise);
-
-  return {
-    confirmedBalancePaise,
-    reservedWithdrawalPaise: totalHoldsPaise,
-    totalWithdrawnPaise,
-    availableBalancePaise,
-    totalEarnedPaise: confirmedBalancePaise,
-    pointsBalance: totalPromotionalPoints,
-  };
+async function computeUserBalance(userId: Types.ObjectId, session?: ClientSession) {
+  const ledgerEntries = await WalletLedgerEntry.find({ userId }).session(session || null);
+  const balance = ledgerBalance(ledgerEntries);
+  const completions = await TaskCompletion.find({ userId, status: 'VERIFIED' }).session(session || null);
+  const recorded = new Set(ledgerEntries.filter(e => e.referenceEntity === 'TaskCompletion' && e.referenceId).map(e => e.referenceId!.toString()));
+  for (const c of completions) if (!recorded.has(c._id.toString())) balance.pointsBalance += c.rewardPoints;
+  return balance;
 }
 
 /**
@@ -95,6 +63,9 @@ export async function getWalletSummary(req: AuthenticatedRequest, res: Response)
         totalWithdrawnPaise: balance.totalWithdrawnPaise,
         totalWithdrawnRupees: Number((balance.totalWithdrawnPaise / 100).toFixed(2)),
         pointsBalance: balance.pointsBalance,
+        pointsValuePaise: pointsToPaise(balance.pointsBalance),
+        pointsValueRupees: Number(pointsToRupees(balance.pointsBalance)),
+        pointsConversionRate: '1000 points = ₹100.00',
         minWithdrawalPaise: MIN_WITHDRAWAL_PAISE,
         minWithdrawalRupees: MIN_WITHDRAWAL_PAISE / 100,
       },
@@ -136,8 +107,9 @@ export async function getWalletTransactions(req: AuthenticatedRequest, res: Resp
     const formatted = entries.map((e) => ({
       id: e._id.toString(),
       type: e.entryType,
-      amountPaise: e.amountPaise,
-      amountRupees: Number((e.amountPaise / 100).toFixed(2)),
+      amountPaise: e.entryType === 'TASK_REWARD' && e.metadata?.rewardPolicy !== 'REDEEMABLE_V1' ? 0 : e.amountPaise,
+      rewardKind: e.entryType === 'TASK_REWARD' && e.metadata?.rewardPolicy !== 'REDEEMABLE_V1' ? 'PROMOTIONAL_POINTS' : 'CASH',
+      amountRupees: e.entryType === 'TASK_REWARD' && e.metadata?.rewardPolicy !== 'REDEEMABLE_V1' ? 0 : Number((e.amountPaise / 100).toFixed(2)),
       pointsEquivalent: e.pointsEquivalent,
       status: e.status,
       notes: e.notes || (e.amountPaise >= 0 ? 'Reward Credit' : 'Withdrawal Hold'),
@@ -166,9 +138,13 @@ export async function getWalletTransactions(req: AuthenticatedRequest, res: Resp
 }
 
 const withdrawSchema = z.object({
-  amountPaise: z.number().int().min(MIN_WITHDRAWAL_PAISE, 'Minimum withdrawal is ₹50 (5000 paise)'),
-  payoutMode: z.enum(['UPI', 'BANK_TRANSFER']),
+  amountPaise: z.number().int().min(MIN_WITHDRAWAL_PAISE, 'Minimum withdrawal is ₹50 (5000 paise)').max(1000000000),
+  payoutMode: z.enum(['UPI', 'BANK_TRANSFER', 'USD_ACCOUNT']),
+  currency: z.enum(['INR', 'USD']).default('INR'),
+  quoteToken: z.string().max(3000).optional(),
+  idempotencyKey: z.string().uuid().optional(),
   beneficiaryDetails: z.object({
+    usdAccount: z.string().trim().min(5).max(500).optional(),
     upiId: z.string().trim().optional(),
     accountHolderName: z.string().trim().optional(),
     accountNumber: z.string().trim().optional(),
@@ -193,7 +169,7 @@ export async function requestWithdrawal(req: AuthenticatedRequest, res: Response
     return;
   }
 
-  const { amountPaise, payoutMode, beneficiaryDetails } = parsed.data;
+  const { amountPaise, payoutMode, beneficiaryDetails, currency, quoteToken } = parsed.data;
 
   // Specific payout validation
   if (payoutMode === 'UPI' && !beneficiaryDetails.upiId) {
@@ -214,76 +190,48 @@ export async function requestWithdrawal(req: AuthenticatedRequest, res: Response
     }
   }
 
-  try {
-    const user = await User.findById(userId);
-    if (!user || user.status !== 'ACTIVE') {
-      res.status(403).json({
-        success: false,
-        error: { code: 'ACCOUNT_NOT_ACTIVE', message: 'User account is not eligible for withdrawal' },
-      });
-      return;
-    }
-
-    // Check available balance
-    const balance = await computeUserBalance(userId);
-    if (balance.availableBalancePaise < amountPaise) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INSUFFICIENT_BALANCE',
-          message: `Insufficient available balance. Available: ₹${(balance.availableBalancePaise / 100).toFixed(2)}, Requested: ₹${(amountPaise / 100).toFixed(2)}`,
-        },
-      });
-      return;
-    }
-
-    // Create withdrawal request
-    const withdrawal = await WithdrawalRequest.create({
-      userId,
-      amountPaise,
-      feePaise: 0,
-      netAmountPaise: amountPaise,
-      payoutMode,
-      beneficiaryDetails,
-      status: 'REQUESTED',
-    });
-
-    // Record hold in ledger
-    await WalletLedgerEntry.create({
-      userId,
-      entryType: 'WITHDRAWAL_HOLD',
-      amountPaise: -amountPaise,
-      pointsEquivalent: amountPaise,
-      status: 'PENDING',
-      balanceBeforePaise: balance.availableBalancePaise,
-      balanceAfterPaise: balance.availableBalancePaise - amountPaise,
-      referenceEntity: 'WithdrawalRequest',
-      referenceId: withdrawal._id,
-      notes: `Payout hold for ₹${(amountPaise / 100).toFixed(2)} via ${payoutMode}`,
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Withdrawal request submitted successfully and queued for review.',
-      data: {
-        withdrawal: {
-          id: withdrawal._id.toString(),
-          amountPaise: withdrawal.amountPaise,
-          amountRupees: Number((withdrawal.amountPaise / 100).toFixed(2)),
-          payoutMode: withdrawal.payoutMode,
-          status: withdrawal.status,
-          createdAt: withdrawal.createdAt,
-        },
-        remainingBalancePaise: balance.availableBalancePaise - amountPaise,
-      },
-    });
-  } catch (err: any) {
-    logger.error('Failed to submit withdrawal request:', err);
-    res.status(500).json({
-      success: false,
-      error: { code: 'WITHDRAWAL_FAILED', message: 'Failed to process withdrawal request' },
-    });
+  let quote: Quote | null = null;
+  if ((currency === 'USD') !== (payoutMode === 'USD_ACCOUNT') || (currency === 'USD' && !beneficiaryDetails.usdAccount)) {
+    res.status(400).json({ success: false, error: { message: 'Choose a valid payout method and provide the recipient details for the selected currency.' } }); return;
   }
+  try {
+    if (quoteToken) quote = verifyQuote(quoteToken, userId.toString(), amountPaise, currency);
+    else if (currency === 'USD') throw new Error('QUOTE_REQUIRED');
+  } catch { res.status(400).json({ success: false, error: { message: 'Your payout quote is missing, expired or invalid. Preview it again.' } }); return; }
+  const session = await mongoose.startSession();
+  try {
+    let response: any;
+    await session.withTransaction(async () => {
+      // Serialize balance mutations per user so simultaneous withdrawals cannot overspend.
+      const user = await User.findOneAndUpdate({ _id: userId, status: 'ACTIVE' }, { $inc: { walletMutationVersion: 1 } }, { session, new: true });
+      if (!user) throw new Error('ACCOUNT_NOT_ACTIVE');
+      if (user.metadata?.kycStatus !== 'VERIFIED') throw new Error('KYC_REQUIRED');
+      const policy = await RedemptionPolicy.findOne({ key: 'wallet' }).session(session);
+      if (currency === 'USD' && (!policy?.usdEnabled || policy.version !== quote?.policyVersion)) throw new Error('QUOTE_EXPIRED');
+      const balance = await computeUserBalance(userId, session);
+      if (balance.availableBalancePaise < amountPaise) throw new Error('INSUFFICIENT_BALANCE');
+      const [withdrawal] = await WithdrawalRequest.create([{
+        userId, amountPaise, feePaise: 0, netAmountPaise: amountPaise, payoutMode, beneficiaryDetails,
+        currency, payoutMinor: quote?.payoutMinor || amountPaise, paisePerUsd: quote?.paisePerUsd || undefined,
+        policyVersion: quote?.policyVersion, status: 'REQUESTED',
+        idempotencyKey: quoteToken ? `quote:${crypto.createHash('sha256').update(quoteToken).digest('hex')}` : parsed.data.idempotencyKey ? `${userId}:${parsed.data.idempotencyKey}` : undefined,
+      }], { session });
+      await WalletLedgerEntry.create([{
+        userId, entryType: 'WITHDRAWAL_HOLD', amountPaise: -amountPaise, pointsEquivalent: 0, status: 'PENDING',
+        balanceBeforePaise: balance.availableBalancePaise, balanceAfterPaise: balance.availableBalancePaise - amountPaise,
+        referenceEntity: 'WithdrawalRequest', referenceId: withdrawal._id,
+        idempotencyKey: `withdrawal-hold-${withdrawal._id}`, notes: `Payout requested via ${payoutMode}; awaiting review`,
+        metadata: { currency, payoutMinor: withdrawal.payoutMinor },
+      }], { session });
+      response = { withdrawal: { id: withdrawal._id.toString(), amountPaise, currency, payoutMinor: withdrawal.payoutMinor, payoutMode, status: withdrawal.status, createdAt: withdrawal.createdAt }, remainingBalancePaise: balance.availableBalancePaise - amountPaise };
+    });
+    res.status(201).json({ success: true, message: 'Withdrawal requested. Payment has not been sent yet.', data: response });
+  } catch (err: any) {
+    logger.error({ err }, 'Withdrawal request failed');
+    const messages: Record<string, string> = { INSUFFICIENT_BALANCE: 'Insufficient available balance.', KYC_REQUIRED: 'Complete KYC verification before withdrawing.', ACCOUNT_NOT_ACTIVE: 'Account is not active.', QUOTE_EXPIRED: 'Payout settings changed. Preview a fresh quote.' };
+    res.status(err.code === 11000 ? 409 : messages[err.message] ? 400 : 500).json({ success: false, error: { message: err.code === 11000 ? 'This withdrawal request has already been submitted. Refresh your wallet.' : messages[err.message] || 'Withdrawal was not submitted. Please retry.' } });
+  } finally { await session.endSession(); }
+
 }
 
 /**
@@ -427,6 +375,10 @@ export async function adminListWithdrawals(req: AuthenticatedRequest, res: Respo
       amountPaise: w.amountPaise,
       amountRupees: Number((w.amountPaise / 100).toFixed(2)),
       payoutMode: w.payoutMode,
+      currency: w.currency || 'INR',
+      payoutMinor: w.payoutMinor ?? w.netAmountPaise,
+      paisePerUsd: w.paisePerUsd,
+      payoutReference: w.payoutReference,
       beneficiaryDetails: w.beneficiaryDetails,
       status: w.status,
       adminReviewNotes: w.adminReviewNotes,
@@ -459,96 +411,34 @@ export async function adminListWithdrawals(req: AuthenticatedRequest, res: Respo
  * Admin portal: Approve (mark PAID) or Reject withdrawal with reversal.
  */
 export async function adminReviewWithdrawal(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const { id } = req.params;
-  const { status, adminReviewNotes, payoutReference } = req.body;
-
-  if (!['PAID', 'PROCESSING', 'REJECTED'].includes(status)) {
-    res.status(400).json({
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Status must be PAID, PROCESSING, or REJECTED' },
-    });
-    return;
+  const input = z.object({ status: z.enum(['PAID', 'PROCESSING', 'REJECTED']), adminReviewNotes: z.string().trim().min(5).max(1000), payoutReference: z.string().trim().max(200).optional() }).safeParse(req.body);
+  if (!Types.ObjectId.isValid(req.params.id) || !input.success || (input.data.status === 'PAID' && (input.data.payoutReference?.length || 0) < 5)) {
+    res.status(400).json({ success: false, error: { message: 'Enter a valid decision, review notes, and a real payment reference when marking paid.' } }); return;
   }
-
+  const session = await mongoose.startSession();
   try {
-    const withdrawal = await WithdrawalRequest.findById(id);
-    if (!withdrawal) {
-      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Withdrawal not found' } });
-      return;
-    }
-
-    if (['PAID', 'REJECTED'].includes(withdrawal.status)) {
-      res.status(400).json({
-        success: false,
-        error: { code: 'ALREADY_FINALIZED', message: `Withdrawal is already in ${withdrawal.status} status` },
-      });
-      return;
-    }
-
-    withdrawal.status = status;
-    withdrawal.adminReviewNotes = adminReviewNotes || withdrawal.adminReviewNotes;
-    withdrawal.reviewedBy = req.user!._id;
-
-    if (status === 'PAID') {
-      withdrawal.processedAt = new Date();
-      withdrawal.payoutReference = payoutReference || `TEST-PAYOUT-${Date.now()}`;
-
-      // Update hold entry in ledger to confirmed paid
-      await WalletLedgerEntry.findOneAndUpdate(
-        { referenceEntity: 'WithdrawalRequest', referenceId: withdrawal._id },
-        { $set: { status: 'CONFIRMED', entryType: 'WITHDRAWAL_PAID' } }
-      );
-    } else if (status === 'REJECTED') {
-      // Reversal: release hold back to user available balance
-      await WalletLedgerEntry.findOneAndUpdate(
-        { referenceEntity: 'WithdrawalRequest', referenceId: withdrawal._id, entryType: 'WITHDRAWAL_HOLD' },
-        { $set: { status: 'REVERSED', notes: `Hold released: ${adminReviewNotes || 'Rejected by operator'}` } }
-      );
-
-      await WalletLedgerEntry.create({
-        userId: withdrawal.userId,
-        entryType: 'WITHDRAWAL_REVERSED',
-        amountPaise: 0,
-        pointsEquivalent: 0,
-        status: 'CONFIRMED',
-        balanceBeforePaise: 0,
-        balanceAfterPaise: 0,
-        referenceEntity: 'WithdrawalRequest',
-        referenceId: withdrawal._id,
-        notes: `Compensating audit entry for rejected payout: ${adminReviewNotes || 'Rejected by operator'}`,
-      });
-    }
-
-    await withdrawal.save();
-
-    await AdminAuditLog.create({
-      adminId: req.user!._id,
-      action: status === 'PAID' ? 'PAYOUT_APPROVED' : 'PAYOUT_REJECTED',
-      targetEntity: 'WithdrawalRequest',
-      targetId: withdrawal._id.toString(),
-      details: { status, adminReviewNotes, payoutReference },
-      ipAddress: req.ip || '127.0.0.1',
+    let result: any;
+    await session.withTransaction(async () => {
+      const w = await WithdrawalRequest.findOne({ _id: req.params.id, status: { $in: ['REQUESTED', 'UNDER_REVIEW', 'PROCESSING'] } }).session(session);
+      if (!w) throw new Error('ALREADY_FINALIZED');
+      await User.updateOne({ _id: w.userId }, { $inc: { walletMutationVersion: 1 } }, { session });
+      const { status, adminReviewNotes, payoutReference } = input.data;
+      if (status !== 'PROCESSING') {
+        const hold = await WalletLedgerEntry.findOneAndUpdate({ referenceEntity: 'WithdrawalRequest', referenceId: w._id, entryType: 'WITHDRAWAL_HOLD', status: 'PENDING' },
+          { $set: status === 'PAID' ? { status: 'CONFIRMED', entryType: 'WITHDRAWAL_PAID' } : { status: 'REVERSED' } }, { session, new: true });
+        if (!hold) throw new Error('HOLD_NOT_FOUND');
+      }
+      w.status = status; w.adminReviewNotes = adminReviewNotes; w.reviewedBy = req.user!._id;
+      if (status === 'PAID') { w.payoutReference = payoutReference; w.processedAt = new Date(); }
+      await w.save({ session });
+      await AdminAuditLog.create([{ adminId: req.user!._id, action: `PAYOUT_${status}`, targetEntity: 'WithdrawalRequest', targetId: w._id.toString(), details: input.data, ipAddress: req.ip || 'unknown' }], { session });
+      result = { id: w._id.toString(), status: w.status, payoutReference: w.payoutReference };
     });
-
-    res.status(200).json({
-      success: true,
-      message: `Withdrawal review saved: status set to ${status}.`,
-      data: {
-        withdrawal: {
-          id: withdrawal._id.toString(),
-          status: withdrawal.status,
-          adminReviewNotes: withdrawal.adminReviewNotes,
-          processedAt: withdrawal.processedAt,
-        },
-      },
-    });
+    res.json({ success: true, data: { withdrawal: result } });
   } catch (err: any) {
-    logger.error('Failed to review withdrawal:', err);
-    res.status(500).json({
-      success: false,
-      error: { code: 'REVIEW_ERROR', message: 'Failed to review withdrawal' },
-    });
-  }
+    logger.error({ err }, 'Withdrawal review failed');
+    res.status(err.message === 'ALREADY_FINALIZED' ? 409 : 500).json({ success: false, error: { message: err.message === 'ALREADY_FINALIZED' ? 'This withdrawal is already finalized or unavailable.' : 'Review was not saved. Refresh and retry.' } });
+  } finally { await session.endSession(); }
 }
 
 /**

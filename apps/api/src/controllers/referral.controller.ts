@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { Types } from 'mongoose';
 import { z } from 'zod';
-import { User, IUser } from '../models';
+import { User, IUser, WalletLedgerEntry } from '../models';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { logger } from '../config/logger';
 
@@ -141,18 +141,48 @@ export async function getDirectReferrals(
       .lean(),
   ]);
 
-  const items = users.map((u) => ({
-    id: u._id.toString(),
-    name: maskName(u.name),
-    referralCode: u.referralCode,
-    mobileMasked: maskMobile(u.mobile),
-    level: 1,
-    status: u.status,
-    isActive: u.status === 'ACTIVE',
-    directReferralsCount: u.directReferralsCount || 0,
-    hasChildren: (u.directReferralsCount || 0) > 0,
-    joinedAt: u.createdAt,
-  }));
+  const userIds = users.map((u) => u._id.toString());
+  const earningsAgg = await WalletLedgerEntry.aggregate([
+    {
+      $match: {
+        userId: new Types.ObjectId(userId),
+        entryType: 'REFERRAL_COMMISSION',
+        status: 'CONFIRMED',
+        'metadata.sourceUserId': { $in: userIds },
+      },
+    },
+    {
+      $group: {
+        _id: '$metadata.sourceUserId',
+        totalPaise: { $sum: '$amountPaise' },
+      },
+    },
+  ]);
+
+  const earningsMap = new Map<string, number>();
+  for (const e of earningsAgg) {
+    if (e._id) {
+      earningsMap.set(e._id.toString(), e.totalPaise || 0);
+    }
+  }
+
+  const items = users.map((u) => {
+    const paise = earningsMap.get(u._id.toString()) || 0;
+    return {
+      id: u._id.toString(),
+      name: maskName(u.name),
+      referralCode: u.referralCode,
+      mobileMasked: maskMobile(u.mobile),
+      level: 1,
+      status: u.status,
+      isActive: u.status === 'ACTIVE',
+      directReferralsCount: u.directReferralsCount || 0,
+      hasChildren: (u.directReferralsCount || 0) > 0,
+      joinedAt: u.createdAt,
+      earningsPaise: paise,
+      earningsRupees: `₹${(paise / 100).toFixed(2)}`,
+    };
+  });
 
   res.status(200).json({
     success: true,
@@ -170,6 +200,8 @@ export async function getDirectReferrals(
 
 const treeQuerySchema = z.object({
   nodeId: z.string().trim().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 /**
@@ -245,12 +277,42 @@ export async function getTreeChildren(
     }
   }
 
-  // 2. Fetch children of targetNode
-  const children = await User.find({ sponsorId: targetNodeId })
-    .select('name mobile referralCode status directReferralsCount ancestors createdAt')
-    .sort({ createdAt: -1 })
-    .limit(100) // Guard against unbounded memory consumption
-    .lean();
+  // 2. Fetch children of targetNode with pagination
+  const { page, limit } = parsed.data;
+  const [totalChildren, children] = await Promise.all([
+    User.countDocuments({ sponsorId: targetNodeId }),
+    User.find({ sponsorId: targetNodeId })
+      .select('name mobile referralCode status directReferralsCount ancestors createdAt')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  const childIds = children.map((c) => c._id.toString());
+  const earningsAgg = await WalletLedgerEntry.aggregate([
+    {
+      $match: {
+        userId: new Types.ObjectId(requesterId),
+        entryType: 'REFERRAL_COMMISSION',
+        status: 'CONFIRMED',
+        'metadata.sourceUserId': { $in: childIds },
+      },
+    },
+    {
+      $group: {
+        _id: '$metadata.sourceUserId',
+        totalPaise: { $sum: '$amountPaise' },
+      },
+    },
+  ]);
+
+  const earningsMap = new Map<string, number>();
+  for (const e of earningsAgg) {
+    if (e._id) {
+      earningsMap.set(e._id.toString(), e.totalPaise || 0);
+    }
+  }
 
   const requesterAncestorsLength = requester.ancestors ? requester.ancestors.length : 0;
 
@@ -259,6 +321,7 @@ export async function getTreeChildren(
     const relativeLevel = c.ancestors
       ? c.ancestors.length - requesterAncestorsLength
       : 1;
+    const paise = earningsMap.get(c._id.toString()) || 0;
 
     return {
       id: c._id.toString(),
@@ -272,6 +335,8 @@ export async function getTreeChildren(
       totalDownlineCount: 0,
       hasChildren: (c.directReferralsCount || 0) > 0,
       joinedAt: c.createdAt,
+      earningsPaise: paise,
+      earningsRupees: `₹${(paise / 100).toFixed(2)}`,
     };
   });
 
@@ -280,6 +345,13 @@ export async function getTreeChildren(
     data: {
       nodeId: targetNodeId.toString(),
       children: mappedChildren,
+      pagination: {
+        page,
+        limit,
+        total: totalChildren,
+        totalPages: Math.ceil(totalChildren / limit) || 1,
+        hasMore: page * limit < totalChildren,
+      },
     },
   });
 }
@@ -335,10 +407,36 @@ export async function getDownline(
       .lean(),
   ]);
 
+  const userIds = users.map((u) => u._id.toString());
+  const earningsAgg = await WalletLedgerEntry.aggregate([
+    {
+      $match: {
+        userId: new Types.ObjectId(userId),
+        entryType: 'REFERRAL_COMMISSION',
+        status: 'CONFIRMED',
+        'metadata.sourceUserId': { $in: userIds },
+      },
+    },
+    {
+      $group: {
+        _id: '$metadata.sourceUserId',
+        totalPaise: { $sum: '$amountPaise' },
+      },
+    },
+  ]);
+
+  const earningsMap = new Map<string, number>();
+  for (const e of earningsAgg) {
+    if (e._id) {
+      earningsMap.set(e._id.toString(), e.totalPaise || 0);
+    }
+  }
+
   const items = users.map((u) => {
     const relativeLevel = u.ancestors
       ? u.ancestors.length - requesterAncestorsLength
       : 1;
+    const paise = earningsMap.get(u._id.toString()) || 0;
 
     return {
       id: u._id.toString(),
@@ -351,6 +449,8 @@ export async function getDownline(
       directReferralsCount: u.directReferralsCount || 0,
       hasChildren: (u.directReferralsCount || 0) > 0,
       joinedAt: u.createdAt,
+      earningsPaise: paise,
+      earningsRupees: `₹${(paise / 100).toFixed(2)}`,
     };
   });
 

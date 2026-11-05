@@ -140,10 +140,17 @@ export const MyTeamScreen: React.FC = () => {
               </View>
             </View>
 
-            <Badge
-              label={node.isActive ? t('common.active') : t('common.pending')}
-              variant={node.isActive ? 'active' : 'inactive'}
-            />
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              <Badge
+                label={node.isActive ? t('common.active') : t('common.pending')}
+                variant={node.isActive ? 'active' : 'inactive'}
+              />
+              <View style={styles.earningsBadge}>
+                <Text style={styles.earningsText}>
+                  Earned: {node.earningsRupees || '₹0.00'}
+                </Text>
+              </View>
+            </View>
           </View>
 
           {/* Expand / Collapse Action */}
@@ -262,6 +269,28 @@ export const MyTeamScreen: React.FC = () => {
           </View>
         </Card>
 
+        {/* Level Commission Slabs Card */}
+        <Card variant="glass" style={styles.commissionCard}>
+          <Text style={styles.commissionTitle}>8-Level Commission Slabs</Text>
+          <Text style={styles.commissionSub}>
+            Direct and downline task completions credit confirmed cash commissions directly to your wallet:
+          </Text>
+          <View style={styles.slabsGrid}>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L1</Text><Text style={styles.slabPct}>25%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L2</Text><Text style={styles.slabPct}>10%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L3</Text><Text style={styles.slabPct}>5%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L4</Text><Text style={styles.slabPct}>4%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L5</Text><Text style={styles.slabPct}>3%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L6</Text><Text style={styles.slabPct}>3%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L7</Text><Text style={styles.slabPct}>3%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L8</Text><Text style={styles.slabPct}>2%</Text></View>
+          </View>
+          <View style={styles.poolFooter}>
+            <Text style={styles.poolTotal}>Total Commission Pool: 55%</Text>
+            <Text style={styles.poolRule}>One parent per member • Cycle & duplicate protected</Text>
+          </View>
+        </Card>
+
         {/* Hierarchy Section */}
         <View style={styles.treeSectionHeader}>
           <Text style={styles.treeTitle}>Team Hierarchy Tree</Text>
@@ -288,6 +317,28 @@ export const MyTeamScreen: React.FC = () => {
               </View>
             </View>
             <Badge label="Active" variant="active" />
+          </View>
+        </Card>
+
+        {/* Level Commission Slabs Card */}
+        <Card variant="glass" style={styles.commissionCard}>
+          <Text style={styles.commissionTitle}>8-Level Commission Slabs</Text>
+          <Text style={styles.commissionSub}>
+            Direct and downline task completions credit confirmed cash commissions directly to your wallet:
+          </Text>
+          <View style={styles.slabsGrid}>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L1</Text><Text style={styles.slabPct}>25%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L2</Text><Text style={styles.slabPct}>10%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L3</Text><Text style={styles.slabPct}>5%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L4</Text><Text style={styles.slabPct}>4%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L5</Text><Text style={styles.slabPct}>3%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L6</Text><Text style={styles.slabPct}>3%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L7</Text><Text style={styles.slabPct}>3%</Text></View>
+            <View style={styles.slabItem}><Text style={styles.slabLvl}>L8</Text><Text style={styles.slabPct}>2%</Text></View>
+          </View>
+          <View style={styles.poolFooter}>
+            <Text style={styles.poolTotal}>Total Commission Pool: 55%</Text>
+            <Text style={styles.poolRule}>One parent per member • Cycle & duplicate protected</Text>
           </View>
         </Card>
 
@@ -629,5 +680,84 @@ const styles = StyleSheet.create({
   },
   emptyBtn: {
     width: '100%',
+  },
+  earningsBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  earningsText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  commissionCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    backgroundColor: 'rgba(245, 158, 11, 0.05)',
+    borderColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  commissionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: 4,
+  },
+  commissionSub: {
+    fontSize: 11,
+    color: THEME.colors.textSecondary,
+    marginBottom: 10,
+    lineHeight: 15,
+  },
+  slabsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  slabItem: {
+    flex: 1,
+    minWidth: 64,
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+  },
+  slabLvl: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  slabPct: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.primary,
+    marginTop: 2,
+  },
+  poolFooter: {
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.border,
+    paddingTop: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  poolTotal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  poolRule: {
+    fontSize: 10,
+    color: THEME.colors.textMuted,
   },
 });

@@ -174,8 +174,24 @@ export async function register(req: Request, res: Response): Promise<void> {
       existingUser.name = name;
       if (sponsorReferralCode && sponsorReferralCode.trim() !== '') {
         const code = sponsorReferralCode.trim().toUpperCase();
+        // Prevent self-referral
+        if (existingUser.referralCode && existingUser.referralCode.toUpperCase() === code) {
+          res.status(400).json({
+            success: false,
+            error: { code: 'INVALID_SPONSOR', message: 'Self-referral is not permitted.' },
+          });
+          return;
+        }
         const sponsor = await User.findOne({ referralCode: code });
         if (sponsor) {
+          // Prevent cycles: sponsor cannot be this user or have this user in sponsor ancestors
+          if (sponsor._id.equals(existingUser._id) || (sponsor.ancestors || []).some((a) => a.equals(existingUser._id))) {
+            res.status(400).json({
+              success: false,
+              error: { code: 'INVALID_SPONSOR', message: 'Referral cycle detected. Sponsor cannot be in your downline.' },
+            });
+            return;
+          }
           existingUser.sponsorId = sponsor._id;
           existingUser.ancestors = [...(sponsor.ancestors || []), sponsor._id];
         }

@@ -46,6 +46,20 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (!isProduction && !currentTestOtp && mobile) {
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
+      fetch(`${baseUrl}/dev/otp/${encodeURIComponent(mobile.trim())}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.otp) {
+            setCurrentTestOtp(d.otp);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [mobile, currentTestOtp, isProduction]);
+
   const getPurpose = (): 'REGISTRATION' | 'LOGIN' | 'PASSWORD_RESET' => {
     if (mode === 'SIGNUP') return 'REGISTRATION';
     if (mode === 'LOGIN') return 'LOGIN';
@@ -102,6 +116,16 @@ export const OTPVerifyScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       if (res.data?.testOtp && !isProduction) {
         setCurrentTestOtp(res.data.testOtp);
+      } else if (!isProduction) {
+        const baseUrl = process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
+        fetch(`${baseUrl}/dev/otp/${encodeURIComponent(mobile.trim())}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.otp) {
+              setCurrentTestOtp(d.otp);
+            }
+          })
+          .catch(() => {});
       }
       setTimer(45);
       setOtp('');

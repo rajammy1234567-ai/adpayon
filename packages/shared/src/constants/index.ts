@@ -30,6 +30,27 @@ export function inrToPaise(inr: number): number {
   return Math.round(inr * 100);
 }
 
+/**
+ * 1000 Points = ₹100 Integer Accounting Specification:
+ * 1,000 Points = 10,000 Paise = ₹100.00
+ * 10 Points = 100 Paise = ₹1.00
+ * 1 Point = 10 Paise = ₹0.10
+ */
+export const POINTS_TO_PAISE_RATIO = 10;
+export const POINTS_PER_RUPEE = 10;
+
+export function pointsToPaise(points: number): number {
+  return Math.round((points || 0) * POINTS_TO_PAISE_RATIO);
+}
+
+export function paiseToPoints(paise: number): number {
+  return Math.floor((paise || 0) / POINTS_TO_PAISE_RATIO);
+}
+
+export function pointsToRupees(points: number): number {
+  return ((points || 0) * POINTS_TO_PAISE_RATIO) / 100;
+}
+
 export const DEFAULT_RANKS: RankMilestoneConfig[] = [
   {
     rank: 'SILVER',

@@ -13,6 +13,8 @@ import {
   X,
   Sparkles,
   Newspaper,
+  Tag,
+  Gift,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isSandboxMode } from '../../services/api';
@@ -27,6 +29,10 @@ export const AdminLayout: React.FC = () => {
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { to: '/campaigns', label: 'Campaigns', icon: <Layers className="w-5 h-5" /> },
     { to: '/tasks', label: 'Tasks', icon: <CheckSquare className="w-5 h-5" /> },
+    { to: '/categories', label: 'Categories', icon: <Tag className="w-5 h-5" /> },
+    { to: '/redemptions', label: 'Redemption & Payouts', icon: <Gift className="w-5 h-5" /> },
+    { to: '/offer-submissions', label: 'Offer Verification', icon: <Gift className="w-5 h-5" /> },
+    { to: '/offers', label: 'Offers & Earn', icon: <Gift className="w-5 h-5" /> },
     { to: '/completions', label: 'Completion Monitor', icon: <Activity className="w-5 h-5" /> },
     {
       to: '/fraud-queue',

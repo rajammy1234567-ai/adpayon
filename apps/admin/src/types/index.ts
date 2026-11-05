@@ -235,3 +235,79 @@ export interface AdminNewsArticle {
   updatedAt: string;
 }
 
+export type CategoryStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED';
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  bannerUrl?: string;
+  displayOrder: number;
+  status: CategoryStatus;
+  offersCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type OfferStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'EXPIRED';
+
+export interface OfferContent {
+  logoUrl?: string;
+  benefits?: string[];
+  eligibility?: string[];
+  documents?: string[];
+  terms?: string[];
+  trackingNotes?: string[];
+  payoutNotes?: string[];
+  marketingMessage?: string;
+  marketingBanners?: { title: string; imageUrl: string }[];
+}
+
+export interface OfferTrainingLink {
+  title: string;
+  url: string;
+  description?: string;
+  thumbnailUrl?: string;
+}
+
+export interface OfferFaq {
+  question: string;
+  answer: string;
+}
+
+export interface OfferCompletionConditions {
+  actionType: 'LINK_VISIT' | 'SIGNUP_SUBMIT' | 'FORM_FILL' | 'PURCHASE' | 'CUSTOM';
+  targetUrl?: string;
+  requiresProof?: boolean;
+  proofInstructions?: string;
+  completionCodeRequired?: boolean;
+}
+
+export interface Offer {
+  content?: OfferContent;
+  personalStats?: { earningsPaise: number; totalLeads: number; totalSales: number };
+  submission?: { id: string; status: string; reviewNotes?: string };
+  id: string;
+  title: string;
+  slug: string;
+  categoryId: string;
+  category?: Category;
+  description: string;
+  rewardPoints: number;
+  status: OfferStatus;
+  displayOrder: number;
+  expiresAt?: string | null;
+  bannerUrl?: string;
+  images: string[];
+  instructions: string[];
+  additionalNotes?: string;
+  trainingLinks: OfferTrainingLink[];
+  faqs: OfferFaq[];
+  completionConditions: OfferCompletionConditions;
+  completionsCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

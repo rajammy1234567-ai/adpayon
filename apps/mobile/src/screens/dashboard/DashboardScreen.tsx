@@ -1,3 +1,4 @@
+import { HomeOffersSection } from '../../components/home/HomeOffersSection';
 import React, { useState } from 'react';
 import {
   RefreshControl,
@@ -168,7 +169,34 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </Card>
 
+        {/* Partner Offers & Categories Banner */}
+        <Card variant="glass" style={styles.offersBannerCard}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 16 }}>🎁</Text>
+              <Text style={styles.sectionTitle}>Partner Offers & Earn</Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
+            >
+              <Text style={styles.viewMoreText}>Explore All →</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.offersBannerSub}>
+            Discover verified Demat, apps, and shopping offers. Share signed links with your network to earn Level 1–8 commissions.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
+            style={styles.browseOffersBtn}
+          >
+            <Text style={styles.browseOffersBtnText}>Browse Categories & Offers</Text>
+          </TouchableOpacity>
+        </Card>
+
         {/* Compact Admin-Curated News Section */}
+        <HomeOffersSection />
         <HomeNewsSection />
 
         {/* Earnings Breakdown by Source */}
@@ -576,5 +604,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.textSecondary,
     textAlign: 'center',
+  },
+  offersBannerCard: {
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: 'rgba(220, 38, 38, 0.04)',
+    borderColor: 'rgba(220, 38, 38, 0.18)',
+  },
+  offersBannerSub: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    lineHeight: 17,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  browseOffersBtn: {
+    backgroundColor: THEME.colors.primary,
+    height: 38,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  browseOffersBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

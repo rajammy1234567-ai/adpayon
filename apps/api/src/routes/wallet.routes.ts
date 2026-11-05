@@ -1,3 +1,4 @@
+import { getRedemptionOptions, createRedemptionQuote, updateRedemptionPolicy } from '../controllers/redemption.controller';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.middleware';
 import { requireAdmin } from '../middleware/adminAuth';
@@ -13,6 +14,11 @@ import {
 } from '../controllers/wallet.controller';
 
 export const walletRouter = Router();
+
+walletRouter.get('/wallet/redemption-options', requireAuth, getRedemptionOptions);
+walletRouter.post('/wallet/redemption-quote', requireAuth, createRedemptionQuote);
+walletRouter.get('/admin/redemption-policy', requireAdmin, getRedemptionOptions);
+walletRouter.put('/admin/redemption-policy', requireAdmin, updateRedemptionPolicy);
 
 // User Wallet Endpoints (Earner Auth required)
 walletRouter.get('/wallet/summary', requireAuth, getWalletSummary);

@@ -21,6 +21,7 @@ import { VideoWatchTaskScreen } from '../screens/earn/VideoWatchTaskScreen';
 import { YouTubeLearningTaskScreen } from '../screens/earn/YouTubeLearningTaskScreen';
 import { ArticleReadTaskScreen } from '../screens/earn/ArticleReadTaskScreen';
 import { AppInstallTaskScreen } from '../screens/earn/AppInstallTaskScreen';
+import { OfferDetailsScreen } from '../screens/offers/OfferDetailsScreen';
 import { AppTabs } from './AppTabs';
 import { RootStackParamList } from './types';
 import { useAuthStore } from '../store/authStore';
@@ -71,6 +72,7 @@ export const RootNavigator: React.FC = () => {
               <Stack.Screen name="OnboardingChallenges" component={ChallengeListScreen} />
             ) : null}
             <Stack.Screen name="MainTabs" component={AppTabs} />
+            <Stack.Screen name="OfferDetails" component={OfferDetailsScreen} />
             {user?.dashboardUnlocked ? (
               <Stack.Screen name="OnboardingChallenges" component={ChallengeListScreen} />
             ) : null}

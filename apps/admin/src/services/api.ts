@@ -7,6 +7,8 @@ import {
   AdminUser,
   Pagination,
   AdminNewsArticle,
+  Category,
+  Offer,
 } from '../types';
 
 const API_BASE = '/api';
@@ -463,6 +465,130 @@ class ApiClient {
       success: boolean;
       message: string;
     }>(`/admin/news/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // --- Category Management ---
+  public async listCategories(status?: string) {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request<{
+      success: boolean;
+      data: Category[];
+    }>(`/admin/categories${query}`);
+  }
+
+  public async createCategory(data: Partial<Category>) {
+    return this.request<{
+      success: boolean;
+      data: Category;
+    }>('/admin/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateCategory(id: string, data: Partial<Category>) {
+    return this.request<{
+      success: boolean;
+      data: Category;
+    }>(`/admin/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteCategory(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/admin/categories/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // --- Offer Management ---
+  public async listOffers(params?: {
+    categoryId?: string;
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const queryParts: string[] = [];
+    if (params?.categoryId) queryParts.push(`categoryId=${encodeURIComponent(params.categoryId)}`);
+    if (params?.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);
+    if (params?.search) queryParts.push(`search=${encodeURIComponent(params.search)}`);
+    if (params?.page) queryParts.push(`page=${params.page}`);
+    if (params?.limit) queryParts.push(`limit=${params.limit}`);
+    const query = queryParts.length ? `?${queryParts.join('&')}` : '';
+
+    return this.request<{
+      success: boolean;
+      data: {
+        items: Offer[];
+        pagination: {
+          page: number;
+          limit: number;
+          total: number;
+          totalPages: number;
+        };
+      };
+    }>(`/admin/offers${query}`);
+  }
+
+  public async getRedemptionPolicy() {
+    return this.request<{ success: boolean; data: { usdEnabled: boolean; paisePerUsd: number | null; usdInstructions: string } }>('/admin/redemption-policy');
+  }
+  public async saveRedemptionPolicy(data: { usdEnabled: boolean; paisePerUsd: number | null; usdInstructions: string }) {
+    return this.request('/admin/redemption-policy', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  public async listPayoutRequests(status: string, page: number) {
+    return this.request<{ success: boolean; data: { withdrawals: any[]; pagination: { pages: number } } }>(`/admin/withdrawals?status=${encodeURIComponent(status)}&page=${page}`);
+  }
+  public async reviewPayoutRequest(id: string, data: { status: string; adminReviewNotes: string; payoutReference?: string }) {
+    return this.request(`/admin/withdrawals/${id}/review`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  public async listOfferSubmissions(status: string, page: number) {
+    return this.request<{ success: boolean; data: { items: any[]; pagination: { totalPages: number } } }>(`/admin/offer-submissions?status=${encodeURIComponent(status)}&page=${page}`);
+  }
+  public async reviewOfferSubmission(id: string, status: string, reviewNotes: string) {
+    return this.request(`/admin/offer-submissions/${id}/review`, { method: 'POST', body: JSON.stringify({ status, reviewNotes }) });
+  }
+
+  public async getOffer(id: string) {
+    return this.request<{
+      success: boolean;
+      data: Offer;
+    }>(`/admin/offers/${id}`);
+  }
+
+  public async createOffer(data: Partial<Offer>) {
+    return this.request<{
+      success: boolean;
+      data: Offer;
+    }>('/admin/offers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateOffer(id: string, data: Partial<Offer>) {
+    return this.request<{
+      success: boolean;
+      data: Offer;
+    }>(`/admin/offers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteOffer(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/admin/offers/${id}`, {
       method: 'DELETE',
     });
   }

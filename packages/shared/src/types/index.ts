@@ -126,6 +126,7 @@ export interface WalletSummary {
 }
 
 export interface LedgerTransactionItem {
+  displayPoints?: number;
   id: string;
   idempotencyKey: string;
   type: TransactionType;
@@ -216,6 +217,105 @@ export interface ReferralTreeNode {
   joinedAt: string;
   hasChildren: boolean;
   children?: ReferralTreeNode[];
+  earningsPaise?: number;
+  earningsRupees?: string;
+}
+
+// ============================================================================
+// Categories and Offers Domain Types
+// ============================================================================
+
+export type CategoryStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED';
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  bannerUrl?: string;
+  displayOrder: number;
+  status: CategoryStatus;
+  offersCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type OfferStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'EXPIRED';
+
+export interface OfferContent {
+  logoUrl?: string;
+  benefits?: string[];
+  eligibility?: string[];
+  documents?: string[];
+  terms?: string[];
+  trackingNotes?: string[];
+  payoutNotes?: string[];
+  marketingMessage?: string;
+  marketingBanners?: { title: string; imageUrl: string }[];
+}
+
+export interface OfferTrainingLink {
+  title: string;
+  url: string;
+  description?: string;
+  thumbnailUrl?: string;
+}
+
+export interface OfferFaq {
+  question: string;
+  answer: string;
+}
+
+export type OfferActionType =
+  | 'EXTERNAL_LINK'
+  | 'APP_INSTALL'
+  | 'LEAD_SUBMISSION'
+  | 'ARTICLE_READ'
+  | 'VIDEO_WATCH'
+  | 'FIRST_PARTY_ACTION'
+  | 'SIGNUP_SUBMIT'
+  | 'LINK_VISIT'
+  | 'FORM_FILL'
+  | 'PURCHASE'
+  | 'CUSTOM';
+
+export interface OfferCompletionConditions {
+  dwellTimeSeconds?: number;
+  actionType: OfferActionType;
+  targetUrl?: string;
+  conditionDescription?: string;
+  requiresProof?: boolean;
+  proofInstructions?: string;
+  completionCodeRequired?: boolean;
+}
+
+export interface Offer {
+  content?: OfferContent;
+  personalStats?: { earningsPaise: number; totalLeads: number; totalSales: number };
+  submission?: { id: string; status: string; reviewNotes?: string };
+  id: string;
+  title: string;
+  slug: string;
+  categoryId: string;
+  categoryName?: string;
+  categorySlug?: string;
+  description: string;
+  rewardPoints: number;
+  status: OfferStatus;
+  displayOrder: number;
+  expiresAt?: string;
+  bannerUrl?: string;
+  images?: string[];
+  instructions?: string[];
+  additionalNotes?: string;
+  trainingLinks?: OfferTrainingLink[];
+  faqs?: OfferFaq[];
+  completionConditions: OfferCompletionConditions;
+  completionsCount?: number;
+  shareableLink?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LevelSlabConfig {

@@ -31,3 +31,5 @@ services:
         sync: false
       - key: DEV_OTP_ENABLED
         value: "false"
+      - key: PUBLIC_OFFER_ORIGIN
+        value: "https://adpayon-client-api.onrender.com"

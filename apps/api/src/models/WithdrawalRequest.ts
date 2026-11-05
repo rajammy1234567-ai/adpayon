@@ -8,7 +8,7 @@ export type WithdrawalStatus =
   | 'REJECTED'
   | 'REVERSED';
 
-export type PayoutMode = 'UPI' | 'BANK_TRANSFER';
+export type PayoutMode = 'UPI' | 'BANK_TRANSFER' | 'USD_ACCOUNT';
 
 export interface IWithdrawalRequest extends Document {
   _id: Types.ObjectId;
@@ -17,7 +17,12 @@ export interface IWithdrawalRequest extends Document {
   feePaise: number;
   netAmountPaise: number;
   payoutMode: PayoutMode;
+  currency?: 'INR' | 'USD';
+  payoutMinor?: number;
+  paisePerUsd?: number;
+  policyVersion?: number;
   beneficiaryDetails: {
+    usdAccount?: string;
     upiId?: string;
     accountHolderName?: string;
     accountNumber?: string;
@@ -70,10 +75,15 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
     },
     payoutMode: {
       type: String,
-      enum: ['UPI', 'BANK_TRANSFER'],
+      enum: ['UPI', 'BANK_TRANSFER', 'USD_ACCOUNT'],
       required: [true, 'Payout mode is required'],
     },
+    currency: { type: String, enum: ['INR', 'USD'], default: 'INR' },
+    payoutMinor: { type: Number, validate: Number.isSafeInteger },
+    paisePerUsd: Number,
+    policyVersion: Number,
     beneficiaryDetails: {
+      usdAccount: { type: String, trim: true, maxlength: 500 },
       upiId: { type: String, trim: true },
       accountHolderName: { type: String, trim: true },
       accountNumber: { type: String, trim: true },

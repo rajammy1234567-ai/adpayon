@@ -5,9 +5,10 @@ import {
   createBottomTabNavigator,
 } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, Wallet, Users, Sparkles, User } from 'lucide-react-native';
+import { Home, LayoutGrid, Wallet, Users, Sparkles, User } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
 import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
+import { CategoriesScreen } from '../screens/categories/CategoriesScreen';
 import { EarnHubScreen } from '../screens/earn/EarnHubScreen';
 import { ProfileSettingsScreen } from '../screens/profile/ProfileSettingsScreen';
 import { MyTeamScreen } from '../screens/team/MyTeamScreen';
@@ -25,6 +26,10 @@ const TAB_CONFIG: Record<keyof MainTabParamList, TabConfig> = {
   Dashboard: {
     label: 'Home',
     Icon: Home,
+  },
+  Categories: {
+    label: 'Categories',
+    Icon: LayoutGrid,
   },
   Wallet: {
     label: 'Wallet',
@@ -135,6 +140,7 @@ export const AppTabs: React.FC = () => {
       }}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Categories" component={CategoriesScreen} />
       <Tab.Screen name="Wallet" component={WalletScreen} />
       <Tab.Screen name="Team" component={MyTeamScreen} />
       <Tab.Screen name="Earn" component={EarnHubScreen} />
@@ -146,8 +152,8 @@ export const AppTabs: React.FC = () => {
 const styles = StyleSheet.create({
   floatingContainer: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 12,
+    right: 12,
     alignItems: 'center',
     zIndex: 100,
   },
@@ -160,7 +166,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
@@ -172,12 +178,12 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   iconContainer: {
-    width: 42,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -185,9 +191,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.22)', // Lighter active-tab highlight on solid red
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     marginTop: 2,
-    letterSpacing: 0.1,
+    letterSpacing: 0,
   },
   tabLabelActive: {
     color: '#FFFFFF',

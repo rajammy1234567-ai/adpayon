@@ -1,3 +1,5 @@
+import { RedemptionManagement } from './pages/RedemptionManagement';
+import { OfferSubmissions } from './pages/OfferSubmissions';
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -13,6 +15,9 @@ import { FraudReviewQueue } from './pages/FraudReviewQueue';
 import { AuditLogs } from './pages/AuditLogs';
 import { AdminProfile } from './pages/AdminProfile';
 import { NewsManagement } from './pages/NewsManagement';
+import { CategoriesManagement } from './pages/CategoriesManagement';
+import { OffersManagement } from './pages/OffersManagement';
+import { CreateEditOffer } from './pages/CreateEditOffer';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -58,6 +63,12 @@ export const App: React.FC = () => {
             <Route path="completions" element={<TaskCompletions />} />
             <Route path="fraud-queue" element={<FraudReviewQueue />} />
             <Route path="news" element={<NewsManagement />} />
+            <Route path="categories" element={<CategoriesManagement />} />
+            <Route path="redemptions" element={<RedemptionManagement />} />
+            <Route path="offer-submissions" element={<OfferSubmissions />} />
+              <Route path="offers" element={<OffersManagement />} />
+            <Route path="offers/new" element={<CreateEditOffer />} />
+            <Route path="offers/:id/edit" element={<CreateEditOffer />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="profile" element={<AdminProfile />} />
           </Route>

@@ -1,3 +1,4 @@
+import { useWalletStore } from './walletStore';
 import { create } from 'zustand';
 import { UserProfile } from '@adpayon/shared';
 import {
@@ -102,6 +103,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    * stores refresh token in secure storage, and sets user profile in state.
    */
   setAuthSession: async (backendUser: BackendUser, tokens: AuthTokens) => {
+    useWalletStore.getState().reset();
     setAccessToken(tokens.accessToken);
     await setRefreshToken(tokens.refreshToken);
     const userProfile = mapBackendUserToProfile(backendUser);
@@ -133,6 +135,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    * Completely tears down authenticated session on device and backend.
    */
   logout: async () => {
+    useWalletStore.getState().reset();
     try {
       const refreshToken = await getRefreshToken();
       if (refreshToken) {

@@ -58,6 +58,7 @@ const envSchema = z
       .transform((val) => parseInt(val, 10))
       .refine((val) => val > 0 && val < 65536, 'PORT must be between 1 and 65535'),
     HOST: z.string().default('127.0.0.1'),
+    PUBLIC_OFFER_ORIGIN: z.string().url().refine(v => /^https?:\/\//i.test(v) && !new URL(v).username && !new URL(v).password).optional(),
     CORS_ORIGIN: z.string().default('*'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     MONGODB_URI: z

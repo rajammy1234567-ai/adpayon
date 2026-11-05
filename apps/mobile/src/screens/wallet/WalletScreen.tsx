@@ -1,7 +1,9 @@
+import { fetchRedemptionOptions, fetchRedemptionQuote, submitWithdrawalApi, RedemptionOptions, RedemptionQuote } from '../../services/api/wallet.api';
 import React, { useState, useEffect } from 'react';
 import {
   Alert,
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -43,18 +45,25 @@ export const WalletScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuthStore();
-  const { summary, transactions, filter, setFilter, recordWithdrawal, fetchSummary, fetchTransactions } = useWalletStore();
+  const { summary, transactions, filter, setFilter, fetchSummary, fetchTransactions, error: walletError, promotionalPoints } = useWalletStore();
 
   const [isWithdrawModalVisible, setIsWithdrawModalVisible] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [payoutMethod, setPayoutMethod] = useState<'UPI' | 'BANK_TRANSFER'>('UPI');
-  const [upiId, setUpiId] = useState(user?.kycDetails?.upiIdMasked || 'vikram@okhdfcbank');
+  const [upiId, setUpiId] = useState('');
+  const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
+  const [options, setOptions] = useState<RedemptionOptions | null>(null);
+  const [quote, setQuote] = useState<RedemptionQuote | null>(null);
+  const [usdAccount, setUsdAccount] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [ifsc, setIfsc] = useState('');
   const [withdrawError, setWithdrawError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     fetchSummary();
     fetchTransactions();
+    fetchRedemptionOptions().then(setOptions).catch(() => setWithdrawError('Could not load payout options. Reopen the app to retry.'));
   }, [fetchSummary, fetchTransactions]);
 
   const filteredTransactions = transactions.filter((tx) => {
@@ -88,6 +97,15 @@ export const WalletScreen: React.FC = () => {
     setIsWithdrawModalVisible(true);
   };
 
+  useEffect(() => { setQuote(null); }, [withdrawAmount, currency]);
+  const previewQuote = async () => {
+    const amount = Number(withdrawAmount);
+    if (!/^\d+(\.\d{1,2})?$/.test(withdrawAmount) || amount < 50) { setWithdrawError('Enter an INR value of at least ₹50 with up to two decimals.'); return; }
+    setIsSubmitting(true); setWithdrawError('');
+    try { setQuote(await fetchRedemptionQuote(inrToPaise(amount), currency)); }
+    catch (e: any) { setWithdrawError(e.message || 'Could not prepare payout quote.'); }
+    finally { setIsSubmitting(false); }
+  };
   const handleConfirmWithdrawal = async () => {
     const inr = parseFloat(withdrawAmount);
     if (isNaN(inr) || inr < 50) {
@@ -100,17 +118,18 @@ export const WalletScreen: React.FC = () => {
       return;
     }
 
-    setIsSubmitting(true);
-    const success = await recordWithdrawal(paise, payoutMethod, upiId);
-    setIsSubmitting(false);
-    if (success) {
-      setIsWithdrawModalVisible(false);
-      setWithdrawAmount('');
-      Alert.alert(
-        'Withdrawal Submitted',
-        `₹${inr.toFixed(2)} payout requested via ${payoutMethod}. Processing typically takes 2-4 hours.`
-      );
-    }
+    if (isSubmitting) return;
+    if (!quote || quote.amountPaise !== paise || quote.currency !== currency || new Date(quote.expiresAt).getTime() <= Date.now()) { setWithdrawError('Preview a fresh payout quote first.'); return; }
+    setIsSubmitting(true); setWithdrawError('');
+    try {
+      await submitWithdrawalApi({ amountPaise: paise, currency, quoteToken: quote.token, payoutMode: currency === 'USD' ? 'USD_ACCOUNT' : payoutMethod,
+        beneficiaryDetails: currency === 'USD' ? { usdAccount } : payoutMethod === 'UPI' ? { upiId } : { accountNumber: bankAccount, ifscCode: ifsc, accountHolderName: user?.name },
+      });
+      await Promise.all([fetchSummary(), fetchTransactions()]);
+      setIsWithdrawModalVisible(false); setWithdrawAmount(''); setQuote(null);
+      Alert.alert('Withdrawal Requested', 'Your request is awaiting review. Payment has not been sent yet.');
+    } catch (e: any) { setWithdrawError(e.message || 'Withdrawal was not submitted.'); }
+    finally { setIsSubmitting(false); }
   };
 
   const renderTransactionItem = ({ item }: { item: LedgerTransactionItem }) => {
@@ -162,7 +181,7 @@ export const WalletScreen: React.FC = () => {
               ]}
             >
               {isCredit ? '+' : '-'}
-              {formatPaiseToRupees(item.amountPaise)}
+              {item.displayPoints !== undefined ? `${item.displayPoints.toLocaleString()} pts` : formatPaiseToRupees(item.amountPaise)}
             </Text>
           </View>
         </View>
@@ -178,6 +197,7 @@ export const WalletScreen: React.FC = () => {
       />
 
       <View style={styles.body}>
+        {!!walletError && <TouchableOpacity accessibilityRole="button" onPress={() => { fetchSummary(); fetchTransactions(); }}><Text style={{ color: THEME.colors.danger, padding: 12 }}>{walletError} · Tap to retry</Text></TouchableOpacity>}
         {isDemoMode && (
           <View style={styles.demoWarningBox}>
             <Text style={styles.demoWarningTitle}>⚠️ DEMO MODE: SAMPLE DATA</Text>
@@ -198,17 +218,18 @@ export const WalletScreen: React.FC = () => {
             {formatPaiseToRupees(summary.mainBalancePaise)}
           </Text>
 
+          <Text style={styles.escrowText}>Equivalent to {Math.floor(summary.mainBalancePaise / 10).toLocaleString()} redeemable points · 1,000 pts = ₹100</Text>
           <View style={styles.escrowRow}>
             <Text style={styles.escrowText}>
               Processing: {formatPaiseToRupees(summary.escrowBalancePaise)}
             </Text>
             <Text style={styles.bonusText}>
-              Bonus Pool: {formatPaiseToRupees(summary.bonusBalancePaise)}
+              Promotional: {promotionalPoints.toLocaleString()} pts
             </Text>
           </View>
 
           <Button
-            title="Request Instant Payout (₹)"
+            title="Redeem / Request Payout"
             onPress={handleOpenWithdraw}
             variant="primary"
             size="md"
@@ -271,91 +292,19 @@ export const WalletScreen: React.FC = () => {
         onClose={() => setIsWithdrawModalVisible(false)}
         title="Request Withdrawal"
       >
-        <View style={styles.modalContent}>
-          <Text style={styles.modalSub}>
-            Funds will be transferred to your verified payment account.
-          </Text>
-
-          {/* Limits notice */}
-          <Card variant="glass" style={styles.limitsCard}>
-            <Text style={styles.limitsText}>
-              • Min: ₹100.00 • Max daily: ₹10,000.00
-            </Text>
-            <Text style={styles.limitsText}>
-              • Processing typically takes 2-4 hours
-            </Text>
-          </Card>
-
-          {/* Method selector */}
-          <View style={styles.methodRow}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setPayoutMethod('UPI')}
-              style={[
-                styles.methodBtn,
-                payoutMethod === 'UPI' ? styles.methodBtnActive : undefined,
-              ]}
-            >
-              <Text style={[styles.methodText, payoutMethod === 'UPI' ? styles.methodTextActive : undefined]}>
-                📱 UPI Transfer
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setPayoutMethod('BANK_TRANSFER')}
-              style={[
-                styles.methodBtn,
-                payoutMethod === 'BANK_TRANSFER' ? styles.methodBtnActive : undefined,
-              ]}
-            >
-              <Text style={[styles.methodText, payoutMethod === 'BANK_TRANSFER' ? styles.methodTextActive : undefined]}>
-                🏦 Bank Transfer
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Input
-            label="Withdrawal Amount (₹)"
-            placeholder="Min 100"
-            keyboardType="numeric"
-            value={withdrawAmount}
-            onChangeText={(text) => {
-              setWithdrawAmount(text);
-              setWithdrawError('');
-            }}
-            error={withdrawError}
-            leftIcon={<Text style={styles.inrPrefix}>₹</Text>}
-          />
-
-          {payoutMethod === 'UPI' ? (
-            <Input
-              label="UPI ID (VPA)"
-              placeholder="e.g. yourname@okhdfcbank"
-              value={upiId}
-              onChangeText={setUpiId}
-              editable={false}
-              helperText="Verified KYC UPI ID"
-            />
-          ) : (
-            <Input
-              label="Bank Account"
-              placeholder="Account Number"
-              value={user?.kycDetails?.bankAccountMasked || 'XXXXXXXX4521'}
-              editable={false}
-              helperText="Verified KYC Bank Account"
-            />
-          )}
-
-          <Button
-            title="Confirm Withdrawal"
-            onPress={handleConfirmWithdrawal}
-            variant="primary"
-            size="lg"
-            isLoading={isSubmitting}
-            style={styles.confirmBtn}
-          />
-        </View>
+        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 540 }} contentContainerStyle={styles.modalContent}>
+          <Text style={styles.modalSub}>1,000 redeemable points = ₹100. Payouts are reviewed before payment. Promotional points are separate.</Text>
+          <View style={styles.methodRow}>{(['INR', 'USD'] as const).map(c => <TouchableOpacity key={c} disabled={c === 'USD' && !options?.usdEnabled} onPress={() => setCurrency(c)} style={[styles.methodBtn, currency === c && styles.methodBtnActive, c === 'USD' && !options?.usdEnabled ? { opacity: 0.45 } : undefined]}><Text style={styles.methodText}>{c === 'INR' ? 'Indian Rupees (₹)' : 'US Dollars ($)'}</Text></TouchableOpacity>)}</View>
+          {!options?.usdEnabled && <Text style={styles.modalSub}>USD payout setup is pending with the administrator.</Text>}
+          {currency === 'USD' && <Text style={styles.modalSub}>{options?.usdInstructions}</Text>}
+          <Input label="Value to redeem (₹)" placeholder="Minimum ₹50" keyboardType="decimal-pad" value={withdrawAmount} onChangeText={setWithdrawAmount} error={withdrawError} />
+          {currency === 'INR' ? <><View style={styles.methodRow}>{(['UPI', 'BANK_TRANSFER'] as const).map(m => <TouchableOpacity key={m} onPress={() => setPayoutMethod(m)} style={[styles.methodBtn, payoutMethod === m && styles.methodBtnActive]}><Text style={styles.methodText}>{m === 'UPI' ? 'UPI' : 'Bank Transfer'}</Text></TouchableOpacity>)}</View>
+            {payoutMethod === 'UPI' ? <Input label="Recipient UPI ID" placeholder="yourname@bank" value={upiId} onChangeText={setUpiId} autoCapitalize="none" /> : <><Input label="Bank account number" value={bankAccount} onChangeText={setBankAccount} keyboardType="number-pad" /><Input label="IFSC" value={ifsc} onChangeText={setIfsc} autoCapitalize="characters" /></>}
+          </> : <Input label="USD recipient details" placeholder="Follow the administrator's payout instructions" value={usdAccount} onChangeText={setUsdAccount} />}
+          <Button title="Preview Payout" onPress={previewQuote} isLoading={isSubmitting} variant="secondary" />
+          {quote && quote.amountPaise === inrToPaise(Number(withdrawAmount) || 0) && quote.currency === currency && <Card variant="default"><Text style={styles.modalSub}>Receive: {quote.currency === 'USD' ? '$' : '₹'}{(quote.payoutMinor / 100).toFixed(2)} {quote.currency}</Text><Text style={styles.modalSub}>Redeem: ₹{(quote.amountPaise / 100).toFixed(2)} · Fee: ₹{(quote.feePaise / 100).toFixed(2)}</Text>{quote.currency === 'USD' && <Text style={styles.modalSub}>Admin-set rate: $1 = ₹{((quote.paisePerUsd || 0) / 100).toFixed(2)}. Rounded down to cents.</Text>}<Text style={styles.modalSub}>Quote valid for 5 minutes. No money has been sent.</Text></Card>}
+          <Button title="Confirm Withdrawal Request" onPress={handleConfirmWithdrawal} variant="primary" size="lg" isLoading={isSubmitting} disabled={!quote} style={styles.confirmBtn} />
+        </ScrollView>
       </Modal>
     </SafeAreaView>
   );
