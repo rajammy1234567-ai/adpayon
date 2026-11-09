@@ -533,9 +533,9 @@ export const EarnHubScreen: React.FC = () => {
         setActiveAssignment(null);
         activeIntervalsRef.current = [];
         Alert.alert(
-          '🎉 Task Verified!',
-          `+${activeTask.rewardPoints} Promotional Points credited successfully to your promotional balance.`,
-          [{ text: 'Great!', onPress: () => {} }]
+          'Submitted for Review',
+          `Your task completion has been submitted to the admin queue. +${activeTask.rewardPoints} PTS ($${(activeTask.rewardPoints * 0.001).toFixed(2)} USD) will be credited upon admin approval.`,
+          [{ text: 'Understood', onPress: () => {} }]
         );
         // Refresh live feed and history
         refreshAll(false);
@@ -753,7 +753,7 @@ export const EarnHubScreen: React.FC = () => {
                         ) : null}
                       </View>
                       <View style={styles.rewardChip}>
-                        <Text style={styles.rewardChipText}>+{task.rewardPoints} PTS</Text>
+                        <Text style={styles.rewardChipText}>+{task.rewardPoints} PTS (${(task.rewardPoints * 0.001).toFixed(2)})</Text>
                       </View>
                     </View>
 

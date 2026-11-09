@@ -5,7 +5,7 @@ import {
 } from '../types';
 
 /**
- * Converts integer paise into formatted INR string.
+ * Converts integer paise into formatted INR string (Legacy).
  * @param paise Integer paise amount (e.g., 5000)
  * @param includeDecimals Whether to format with .00 if cents exist (default true)
  * @returns Formatted currency string (e.g., "₹50.00" or "₹50")
@@ -31,10 +31,8 @@ export function inrToPaise(inr: number): number {
 }
 
 /**
- * 1000 Points = ₹100 Integer Accounting Specification:
- * 1,000 Points = 10,000 Paise = ₹100.00
- * 10 Points = 100 Paise = ₹1.00
- * 1 Point = 10 Paise = ₹0.10
+ * Legacy 1000 Points = ₹100 Integer Accounting Specification:
+ * Preserved for backward compatibility with existing INR history.
  */
 export const POINTS_TO_PAISE_RATIO = 10;
 export const POINTS_PER_RUPEE = 10;
@@ -49,6 +47,40 @@ export function paiseToPoints(paise: number): number {
 
 export function pointsToRupees(points: number): number {
   return ((points || 0) * POINTS_TO_PAISE_RATIO) / 100;
+}
+
+/**
+ * Authoritative Point Conversion Specification:
+ * 1,000 Points = USD $1.00
+ * 1 Point = USD $0.001
+ * Points are authoritative integers. Fractional dollar accuracy is preserved down to 1 point ($0.001).
+ */
+export const POINTS_PER_USD = 1000;
+export const USD_PER_POINT = 0.001;
+
+export function pointsToUsd(points: number): number {
+  return (points || 0) * USD_PER_POINT;
+}
+
+export function usdToPoints(usd: number): number {
+  return Math.round((usd || 0) * POINTS_PER_USD);
+}
+
+export function formatUsd(amount: number): string {
+  if (amount === 0 || !amount) return '$0.00';
+  const fixed3 = amount.toFixed(3);
+  if (fixed3.endsWith('0')) {
+    return `$${amount.toFixed(2)}`;
+  }
+  return `$${fixed3}`;
+}
+
+export function formatPointsToUsd(points: number): string {
+  return formatUsd(pointsToUsd(points));
+}
+
+export function formatRewardDisplay(points: number): string {
+  return `${(points || 0).toLocaleString()} pts (${formatPointsToUsd(points)})`;
 }
 
 export const DEFAULT_RANKS: RankMilestoneConfig[] = [
@@ -94,7 +126,7 @@ export const DEFAULT_RANKS: RankMilestoneConfig[] = [
     directReferralsRequired: 50,
     leftCountRequired: 10000,
     rightCountRequired: 10000,
-    rewardAmountPaise: 25000000, // ₹2,50,000
+    rewardAmountPaise: 25000000, // ₹2,50,00,000
     badgeIcon: 'award-crown',
   },
   {
@@ -130,7 +162,7 @@ export const DEFAULT_COMMISSION_CONFIG: CommissionConfigData = {
   version: 1,
   isActive: true,
   levelIncome: {
-    poolBudgetPercentage: 55, // Config-driven pool allocation placeholder
+    poolBudgetPercentage: 55,
     slabs: [
       { level: 1, percentage: 25 },
       { level: 2, percentage: 10 },
@@ -143,7 +175,7 @@ export const DEFAULT_COMMISSION_CONFIG: CommissionConfigData = {
     ],
   },
   binaryIncome: {
-    poolBudgetPercentage: 20, // Temporary placeholder pending clarification (Open Question 1)
+    poolBudgetPercentage: 20,
     matchingSlabs: [
       { leftUnits: 50, rightUnits: 50, percentage: 6 },
       { leftUnits: 600, rightUnits: 600, percentage: 6 },
@@ -154,16 +186,16 @@ export const DEFAULT_COMMISSION_CONFIG: CommissionConfigData = {
       { leftUnits: 300000, rightUnits: 300000, percentage: 4 },
       { leftUnits: 500000, rightUnits: 500000, percentage: 5 },
     ],
-    dailyCappingPaise: 2500000, // ₹25,000 daily cap
+    dailyCappingPaise: 2500000,
   },
   rankRewards: {
     poolBudgetPercentage: 25,
     ranks: DEFAULT_RANKS,
   },
-  signupBonusPaise: 5000, // ₹50.00
+  signupBonusPaise: 5000,
   withdrawalLimits: {
-    minWithdrawalPaise: 10000, // ₹100.00
-    maxDailyWithdrawalPaise: 1000000, // ₹10,000.00
+    minWithdrawalPaise: 10000,
+    maxDailyWithdrawalPaise: 1000000,
     kycMandatory: true,
   },
 };

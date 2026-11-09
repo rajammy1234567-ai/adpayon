@@ -16,6 +16,7 @@ export interface IUser extends Document {
   sponsorId?: Types.ObjectId | null;
   ancestors: Types.ObjectId[];
   directReferralsCount: number;
+  streakCount?: number;
   metadata?: {
     language?: 'hi' | 'en';
     kycStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
@@ -90,6 +91,11 @@ const userSchema = new Schema<IUser>(
       index: true,
     },
     directReferralsCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    streakCount: {
       type: Number,
       default: 0,
       min: 0,

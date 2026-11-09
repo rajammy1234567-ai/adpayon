@@ -1,4 +1,5 @@
 import { HomeOffersSection } from '../../components/home/HomeOffersSection';
+import { SponsoredBannersSection } from '../../components/home/SponsoredBannersSection';
 import React, { useState } from 'react';
 import {
   RefreshControl,
@@ -191,9 +192,12 @@ export const DashboardScreen: React.FC = () => {
             onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
             style={styles.browseOffersBtn}
           >
-            <Text style={styles.browseOffersBtnText}>Browse Categories & Offers</Text>
+            <Text style={styles.browseOffersBtnText}>Browse Task Hub Offers</Text>
           </TouchableOpacity>
         </Card>
+
+        {/* Admin-Managed Sponsored Banners Carousel */}
+        <SponsoredBannersSection />
 
         {/* Compact Admin-Curated News Section */}
         <HomeOffersSection />
@@ -254,9 +258,10 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* Quick Action Hub */}
-        <Text style={styles.sectionHeader}>{t('dashboard.quickActions')}</Text>
+        {/* Home Discovery Hub */}
+        <Text style={styles.sectionHeader}>Activity & Earnings Discovery</Text>
         <View style={styles.actionGrid}>
+          {/* 1. Attendance */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => navigation.navigate('DailyStreak')}
@@ -265,53 +270,82 @@ export const DashboardScreen: React.FC = () => {
             <View style={[styles.gridIcon, { backgroundColor: THEME.colors.goldGlow }]}>
               <Text style={styles.gridEmoji}>🔥</Text>
             </View>
-            <Text style={styles.gridLabel}>{t('dashboard.dailyCheckin')}</Text>
+            <Text style={styles.gridLabel}>Attendance</Text>
           </TouchableOpacity>
 
+          {/* 2. Play & Earn */}
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => navigation.navigate('ScratchEarn')}
+            onPress={() => navigation.navigate('PlayAndEarn')}
+            style={styles.gridAction}
+          >
+            <View style={[styles.gridIcon, { backgroundColor: 'rgba(217, 119, 6, 0.12)' }]}>
+              <Text style={styles.gridEmoji}>🎡</Text>
+            </View>
+            <Text style={styles.gridLabel}>Play & Earn</Text>
+          </TouchableOpacity>
+
+          {/* 3. Tasks */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
             style={styles.gridAction}
           >
             <View style={[styles.gridIcon, { backgroundColor: THEME.colors.emeraldGlow }]}>
-              <Text style={styles.gridEmoji}>✨</Text>
+              <Text style={styles.gridEmoji}>🎯</Text>
             </View>
-            <Text style={styles.gridLabel}>{t('dashboard.scratchCard')}</Text>
+            <Text style={styles.gridLabel}>Task Hub</Text>
           </TouchableOpacity>
 
+          {/* 4. Video Wall */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('VideoWall')}
+            style={styles.gridAction}
+          >
+            <View style={[styles.gridIcon, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+              <Text style={styles.gridEmoji}>🎬</Text>
+            </View>
+            <Text style={styles.gridLabel}>Video Wall</Text>
+          </TouchableOpacity>
+
+          {/* 5. News */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => navigation.navigate('QuizLeaderboard')}
             style={styles.gridAction}
           >
             <View style={[styles.gridIcon, { backgroundColor: THEME.colors.cyanGlow }]}>
-              <Text style={styles.gridEmoji}>🧠</Text>
+              <Text style={styles.gridEmoji}>📰</Text>
             </View>
-            <Text style={styles.gridLabel}>{t('dashboard.dailyQuiz')}</Text>
+            <Text style={styles.gridLabel}>News & Board</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('MobileRecharge')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(220, 38, 38, 0.08)' }]}>
-              <Text style={styles.gridEmoji}>📲</Text>
-            </View>
-            <Text style={styles.gridLabel}>{t('dashboard.recharge')}</Text>
-          </TouchableOpacity>
-
+          {/* 6. Shopping Cashback */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => navigation.navigate('ShoppingCashback')}
             style={styles.gridAction}
           >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(217, 119, 6, 0.10)' }]}>
+            <View style={[styles.gridIcon, { backgroundColor: 'rgba(220, 38, 38, 0.08)' }]}>
               <Text style={styles.gridEmoji}>🛍️</Text>
             </View>
-            <Text style={styles.gridLabel}>{t('dashboard.shopping')}</Text>
+            <Text style={styles.gridLabel}>Cashback</Text>
           </TouchableOpacity>
 
+          {/* 7. Refer & Earn */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('ReferralInvite')}
+            style={styles.gridAction}
+          >
+            <View style={[styles.gridIcon, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
+              <Text style={styles.gridEmoji}>👥</Text>
+            </View>
+            <Text style={styles.gridLabel}>Refer & Earn</Text>
+          </TouchableOpacity>
+
+          {/* 8. Rank Rewards */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => navigation.navigate('RankRewards')}
@@ -320,7 +354,7 @@ export const DashboardScreen: React.FC = () => {
             <View style={[styles.gridIcon, { backgroundColor: THEME.colors.goldGlow }]}>
               <Text style={styles.gridEmoji}>🏆</Text>
             </View>
-            <Text style={styles.gridLabel}>{t('dashboard.rankRewards')}</Text>
+            <Text style={styles.gridLabel}>Rank Club</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

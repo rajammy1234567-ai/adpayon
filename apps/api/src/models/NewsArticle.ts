@@ -8,6 +8,7 @@ export interface INewsArticle extends Document {
   url: string;
   category: string;
   isPublished: boolean;
+  isRewardBearing: boolean;
   priority: number;
   publishedAt: Date;
   createdAt: Date;
@@ -47,6 +48,11 @@ const newsArticleSchema = new Schema<INewsArticle>(
     isPublished: {
       type: Boolean,
       default: true,
+      index: true,
+    },
+    isRewardBearing: {
+      type: Boolean,
+      default: false,
       index: true,
     },
     priority: {

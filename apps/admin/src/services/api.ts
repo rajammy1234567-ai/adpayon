@@ -98,6 +98,10 @@ class ApiClient {
       ...(fetchOptions.headers as Record<string, string>),
     };
 
+    if (!this.accessToken && typeof window !== 'undefined') {
+      this.accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    }
+
     if (this.accessToken) {
       headers['Authorization'] = `Bearer ${this.accessToken}`;
     }
@@ -590,6 +594,93 @@ class ApiClient {
       message: string;
     }>(`/admin/offers/${id}`, {
       method: 'DELETE',
+    });
+  }
+
+  // Sponsored Banners
+  public async listBanners() {
+    return this.request<{ success: boolean; data: any[] }>('/admin/banners');
+  }
+  public async createBanner(data: any) {
+    return this.request<{ success: boolean; data: any }>('/admin/banners', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  public async updateBanner(id: string, data: any) {
+    return this.request<{ success: boolean; data: any }>(`/admin/banners/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+  public async deleteBanner(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/admin/banners/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Play & Earn Activities
+  public async getPlayEarnConfigs() {
+    return this.request<{ success: boolean; data: any[] }>('/admin/play-earn/configs');
+  }
+  public async updatePlayEarnConfig(activityType: string, data: any) {
+    return this.request<{ success: boolean; data: any }>(`/admin/play-earn/configs/${activityType}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Video Content
+  public async listVideos() {
+    return this.request<{ success: boolean; data: any[] }>('/admin/videos');
+  }
+  public async createVideo(data: any) {
+    return this.request<{ success: boolean; data: any }>('/admin/videos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  public async updateVideo(id: string, data: any) {
+    return this.request<{ success: boolean; data: any }>(`/admin/videos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+  public async deleteVideo(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/admin/videos/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Shopping Merchants & Cashback Claims
+  public async listMerchants() {
+    return this.request<{ success: boolean; data: any[] }>('/admin/shopping/merchants');
+  }
+  public async createMerchant(data: any) {
+    return this.request<{ success: boolean; data: any }>('/admin/shopping/merchants', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  public async updateMerchant(id: string, data: any) {
+    return this.request<{ success: boolean; data: any }>(`/admin/shopping/merchants/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+  public async deleteMerchant(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/admin/shopping/merchants/${id}`, {
+      method: 'DELETE',
+    });
+  }
+  public async listCashbackClaims(status?: string) {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request<{ success: boolean; data: any[] }>(`/admin/shopping/claims${q}`);
+  }
+  public async reviewCashbackClaim(id: string, data: { decision: 'APPROVE' | 'REJECT'; approvedPoints?: number; rejectionReason?: string; adminNotes?: string }) {
+    return this.request<{ success: boolean; data: any }>(`/admin/shopping/claims/${id}/review`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 }

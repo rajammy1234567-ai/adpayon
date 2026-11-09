@@ -28,7 +28,7 @@ const TAB_CONFIG: Record<keyof MainTabParamList, TabConfig> = {
     Icon: Home,
   },
   Categories: {
-    label: 'Categories',
+    label: 'Task Hub',
     Icon: LayoutGrid,
   },
   Wallet: {

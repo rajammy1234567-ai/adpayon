@@ -9,6 +9,7 @@ import {
   youtubeLearningConfigSchema,
   extractYouTubeVideoId,
   isSafePublicUrl,
+  pointsToPaise,
 } from '@adpayon/shared';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { Campaign, Task, TaskCompletion, AdminAuditLog, WalletLedgerEntry } from '../models';
@@ -359,11 +360,25 @@ const updateTaskSchema = z
     }
   });
 
-const reviewCompletionSchema = z.object({
-  status: z.enum(['VERIFIED', 'REJECTED']),
-  adminReviewNotes: z.preprocess(emptyToUndefined, z.string().max(1000).optional()),
-  rejectionReason: z.preprocess(emptyToUndefined, z.string().max(500).optional()),
-});
+const reviewCompletionSchema = z
+  .object({
+    status: z.enum(['VERIFIED', 'REJECTED']),
+    adminReviewNotes: z.preprocess(emptyToUndefined, z.string().max(1000).optional()),
+    rejectionReason: z.preprocess(emptyToUndefined, z.string().max(500).optional()),
+  })
+  .refine(
+    (data) => {
+      if (data.status === 'REJECTED') {
+        const reason = data.rejectionReason || data.adminReviewNotes;
+        return typeof reason === 'string' && reason.trim().length >= 3;
+      }
+      return true;
+    },
+    {
+      message: 'A mandatory rejection reason (at least 3 characters) is required when rejecting a task completion.',
+      path: ['rejectionReason'],
+    }
+  );
 
 /**
  * POST /api/admin/campaigns
@@ -1353,13 +1368,52 @@ export async function reviewCompletion(req: AuthenticatedRequest, res: Response)
   }
 
   const previousStatus = completion.status;
-  completion.status = parsed.data.status;
-  completion.adminReviewNotes = parsed.data.adminReviewNotes;
-  completion.rejectionReason = parsed.data.rejectionReason;
-  completion.reviewedBy = req.user!._id;
-  await completion.save();
 
-  if (parsed.data.status === 'VERIFIED' && previousStatus !== 'VERIFIED') {
+  if (parsed.data.status === 'REJECTED') {
+    if (previousStatus === 'VERIFIED') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'CANNOT_REJECT_VERIFIED', message: 'Cannot reject an already verified task completion.' },
+      });
+      return;
+    }
+    completion.status = 'REJECTED';
+    completion.rejectionReason = parsed.data.rejectionReason || parsed.data.adminReviewNotes || 'Rejected by admin';
+    completion.adminReviewNotes = parsed.data.adminReviewNotes;
+    completion.reviewedBy = req.user!._id;
+    await completion.save();
+  } else if (parsed.data.status === 'VERIFIED') {
+    if (previousStatus === 'VERIFIED') {
+      res.status(200).json({
+        success: true,
+        data: {
+          completion: {
+            id: completion._id.toString(),
+            status: completion.status,
+            adminReviewNotes: completion.adminReviewNotes,
+            reviewedBy: completion.reviewedBy?.toString(),
+          },
+        },
+      });
+      return;
+    }
+    if (previousStatus === 'REJECTED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CANNOT_APPROVE_REJECTED',
+          message: 'Cannot approve a rejected task completion without user resubmission.',
+        },
+      });
+      return;
+    }
+
+    completion.status = 'VERIFIED';
+    completion.adminReviewNotes = parsed.data.adminReviewNotes;
+    completion.rejectionReason = undefined;
+    completion.reviewedBy = req.user!._id;
+    await completion.save();
+
     const existingLedger = await WalletLedgerEntry.findOne({
       referenceEntity: 'TaskCompletion',
       referenceId: completion._id,
@@ -1372,15 +1426,22 @@ export async function reviewCompletion(req: AuthenticatedRequest, res: Response)
       await WalletLedgerEntry.create({
         userId: completion.userId,
         entryType: 'TASK_REWARD',
-        amountPaise: completion.rewardPoints,
+        amountPaise: 0,
         pointsEquivalent: completion.rewardPoints,
         status: 'CONFIRMED',
         balanceBeforePaise: 0,
-        balanceAfterPaise: completion.rewardPoints,
+        balanceAfterPaise: 0,
         referenceEntity: 'TaskCompletion',
         referenceId: completion._id,
         idempotencyKey: `admin-approval-${completion._id}`,
         notes: `Admin approval reward for task "${task?.title || 'Task'}"`,
+        metadata: {
+          rewardPolicy: 'REDEEMABLE_V1',
+          currency: 'USD',
+          points: completion.rewardPoints,
+          usd: completion.rewardPoints * 0.001,
+          reviewedBy: req.user!._id.toString(),
+        },
       });
     }
   }
@@ -1646,7 +1707,7 @@ export async function listCompletions(req: AuthenticatedRequest, res: Response):
 
   const filter: any = {};
 
-  const ALLOWED_STATUSES = ['VERIFIED', 'FLAGGED', 'REJECTED'] as const;
+  const ALLOWED_STATUSES = ['ALL', 'PENDING_REVIEW', 'VERIFIED', 'FLAGGED', 'REJECTED'] as const;
   const ALLOWED_METHODS = ['FIRST_PARTY_ACTION', 'AUTHENTICATED_WEBHOOK', 'MANUAL_REVIEW'] as const;
 
   if (req.query.status && req.query.status !== 'ALL') {
@@ -1722,6 +1783,10 @@ export async function listCompletions(req: AuthenticatedRequest, res: Response):
     userId: c.userId,
     clickId: c.clickId,
     rewardPoints: c.rewardPoints,
+    usdEquivalent: Number((c.rewardPoints * 0.001).toFixed(3)),
+    proofFileId: c.proofFileId,
+    proofUrl: c.proofUrl,
+    notes: c.notes,
     status: c.status,
     verificationMethod: c.verificationMethod,
     evidence: c.evidenceId,

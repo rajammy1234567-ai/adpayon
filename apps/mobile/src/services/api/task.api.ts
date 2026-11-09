@@ -232,6 +232,31 @@ export async function verifyTaskActionApi(
 }
 
 /**
+ * POST /api/tasks/:id/submit-proof
+ * Submits uploaded screenshot proof for an Earn Hub task.
+ * Enters PENDING_REVIEW; points credit only upon admin approval.
+ */
+export async function submitTaskProofApi(
+  taskId: string,
+  data: { proofFileId: string; proofUrl?: string; notes?: string; assignmentId?: string }
+): Promise<{
+  success: boolean;
+  data: {
+    status: string;
+    rewardPoints: number;
+    usdEquivalent: number;
+    completionId: string;
+    message: string;
+  };
+}> {
+  return apiClient(`/tasks/${encodeURIComponent(taskId)}/submit-proof`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+    requiresAuth: true,
+  });
+}
+
+/**
  * POST /api/tasks/:id/heartbeat
  * Syncs foreground active engagement intervals with the server.
  */

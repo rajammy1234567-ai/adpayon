@@ -11,6 +11,7 @@ import {
   recordStoreVisit,
   submitAppFeedback,
   verifyAppInstall,
+  submitTaskProof,
 } from '../controllers/userTask.controller';
 import {
   startVideoSession,
@@ -54,6 +55,7 @@ userTaskRouter.get('/tasks/history', getTaskHistory);
 userTaskRouter.get('/tasks/summary', getTaskSummary);
 userTaskRouter.get('/tasks/:id/status', getTaskStatus);
 userTaskRouter.post('/tasks/:id/store-visit', recordStoreVisit);
+userTaskRouter.post('/tasks/:id/submit-proof', submitTaskProof);
 userTaskRouter.post('/tasks/:id/verify-install', verifyAppInstall);
 userTaskRouter.post('/tasks/:id/app-install/complete', verifyAppInstall);
 userTaskRouter.post('/tasks/:id/app-feedback/submit', submitAppFeedback);

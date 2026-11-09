@@ -29,6 +29,7 @@ router.get('/admin/offers/:id', requireAdmin, getOfferByIdOrSlug);
 // Authenticated user actions
 router.post('/offers/:id/share-link', requireAuth, generateOfferShareLink);
 router.post('/offers/:id/complete', requireAuth, completeOffer);
+router.post('/offers/:id/submit', requireAuth, completeOffer);
 
 router.get('/admin/offer-submissions', requireAdmin, listOfferSubmissions);
 router.post('/admin/offer-submissions/:id/review', requireAdmin, reviewOfferSubmission);

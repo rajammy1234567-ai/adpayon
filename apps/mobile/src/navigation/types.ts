@@ -24,6 +24,8 @@ export type RootStackParamList = {
   ScratchEarn: undefined;
   RankRewards: undefined;
   DailyStreak: undefined;
+  PlayAndEarn: undefined;
+  VideoWall: undefined;
   MobileRecharge: undefined;
   ShoppingCashback: undefined;
   KycUpload: undefined;

@@ -696,4 +696,174 @@ export interface AppInstallVerificationContext {
   };
 }
 
+// ============================================================================
+// Attendance & Daily Streak Types
+// ============================================================================
+
+export interface DailyAttendanceDay {
+  day: number;
+  points: number;
+  usdValue: number;
+  isClaimed: boolean;
+  isToday: boolean;
+  isLocked: boolean;
+}
+
+export interface AttendanceStatusResponse {
+  currentStreak: number;
+  claimedToday: boolean;
+  dayOfCycle: number;
+  cycleDays: DailyAttendanceDay[];
+  todayPoints: number;
+  todayUsd: number;
+  canClaim: boolean;
+}
+
+// ============================================================================
+// Sponsored Banners
+// ============================================================================
+
+export interface SponsoredBannerItem {
+  id: string;
+  title: string;
+  imageUrl: string;
+  destinationUrl: string;
+  sponsorName: string;
+  active: boolean;
+  displayOrder: number;
+  clicksCount?: number;
+  impressionsCount?: number;
+  createdAt: string;
+}
+
+// ============================================================================
+// Play & Earn Activities (Spin, Scratch, Puzzle, Quiz)
+// ============================================================================
+
+export type PlayEarnActivityType = 'SPIN_WHEEL' | 'SCRATCH_CARD' | 'NUMBER_PUZZLE' | 'QUIZ';
+
+export interface PlayEarnActivityInfo {
+  activityType: PlayEarnActivityType;
+  title: string;
+  description: string;
+  icon: string;
+  dailyLimit: number;
+  attemptsUsedToday: number;
+  attemptsRemainingToday: number;
+  minPoints: number;
+  maxPoints: number;
+  enabled: boolean;
+  spinSegments?: number[];
+  latestAttempt?: {
+    pointsAwarded: number;
+    usdValue: number;
+    status: string;
+    metadata?: Record<string, any>;
+    createdAt: string | Date;
+  } | null;
+}
+
+export interface PlayEarnSpinResult {
+  segmentIndex: number;
+  pointsAwarded: number;
+  usdValue: number;
+  message: string;
+  remainingAttempts: number;
+}
+
+export interface PlayEarnScratchCard {
+  cardId: string;
+  revealedPoints: number;
+  usdValue: number;
+  isRevealed: boolean;
+  remainingAttempts: number;
+}
+
+export interface SlidingPuzzleQuestion {
+  initialBoard: number[]; // 3x3 tiles, 0 = empty space
+  targetBoard: number[]; // [1, 2, 3, 4, 5, 6, 7, 8, 0]
+  timeLimitSeconds: number;
+  rewardPoints: number;
+}
+
+export interface PlayEarnQuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  rewardPoints: number;
+}
+
+// ============================================================================
+// Video Wall & Content Types
+// ============================================================================
+
+export interface VideoContentItem {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+  videoUrl: string;
+  category: string;
+  durationSeconds: number;
+  instructions: string[];
+  rewardPoints: number;
+  usdValue: number;
+  isRewardBearing: boolean;
+  isPublished: boolean;
+  displayOrder: number;
+  createdAt: string;
+}
+
+// ============================================================================
+// Shopping Cashback & Merchant Types
+// ============================================================================
+
+export interface ShoppingMerchantItem {
+  id: string;
+  name: string;
+  logoUrl: string;
+  description: string;
+  destinationUrl: string;
+  cashbackTerms: string;
+  featuredBadge?: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type CashbackClaimStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface CashbackClaimItem {
+  id: string;
+  userId: string;
+  merchantId: string;
+  merchantName: string;
+  merchantLogo?: string;
+  orderId: string;
+  orderAmount: number;
+  currency: string;
+  claimedPoints: number;
+  approvedPoints?: number;
+  proofFileId?: string;
+  proofUrl?: string;
+  notes?: string;
+  status: CashbackClaimStatus;
+  rejectionReason?: string;
+  adminReviewNotes?: string;
+  reviewedAt?: string;
+  createdAt: string;
+}
+
+// ============================================================================
+// Privacy-Masked Leaderboard Types
+// ============================================================================
+
+export interface ReferralLeaderboardEntry {
+  rank: number;
+  maskedName: string;
+  maskedIdentifier: string;
+  directReferralsCount: number;
+  totalEarnedPoints: number;
+  totalEarnedUsd: number;
+}
+
 

@@ -129,7 +129,7 @@ export const CategoriesScreen: React.FC = () => {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
-        title="Categories & Offers"
+        title="Task Hub"
         subtitle="Explore verified partner offers & earn reward points"
       />
 
@@ -213,7 +213,7 @@ export const CategoriesScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.infoTitle}>Verified Partner Offers</Text>
               <Text style={styles.infoText}>
-                1,000 points = ₹100.00. Share with friends using your signed link. Points credit upon verified task completion.
+                1,000 points = USD $1.00. Share with friends using your signed link. Points credit upon verified task completion.
               </Text>
             </View>
           </View>
@@ -248,7 +248,7 @@ export const CategoriesScreen: React.FC = () => {
             </Card>
           ) : (
             filteredOffers.map((offer) => {
-              const rupeeValue = ((offer.rewardPoints * 10) / 100).toFixed(2);
+              const usdValue = (offer.rewardPoints * 0.001).toFixed(2);
               const catName = categoryMap.get(offer.categoryId) || 'Offer';
               const isSharing = sharingOfferId === offer.id;
 
@@ -278,7 +278,7 @@ export const CategoriesScreen: React.FC = () => {
                         <Text style={styles.rewardPoints}>
                           {offer.rewardPoints.toLocaleString()} pts
                         </Text>
-                        <Text style={styles.rewardRupees}>(₹{rupeeValue})</Text>
+                        <Text style={styles.rewardRupees}>(${usdValue})</Text>
                       </View>
                     </View>
 

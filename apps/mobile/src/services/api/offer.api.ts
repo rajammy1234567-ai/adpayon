@@ -61,7 +61,7 @@ export async function generateOfferShareLinkApi(
 
 export async function completeOfferApi(
   offerId: string,
-  body?: { proofUrl?: string; completionCode?: string; notes?: string }
+  body?: { proofUrl?: string; proofFileId?: string; completionCode?: string; notes?: string }
 ): Promise<OfferCompletionResponse> {
   return apiClient<OfferCompletionResponse>(`/offers/${encodeURIComponent(offerId)}/complete`, {
     method: 'POST',

@@ -16,6 +16,12 @@ import { privacyRouter } from './routes/privacy.routes';
 import { newsRouter } from './routes/news.routes';
 import { categoryRouter } from './routes/category.routes';
 import { offerRouter } from './routes/offer.routes';
+import { uploadRouter } from './routes/upload.routes';
+import { attendanceRouter } from './routes/attendance.routes';
+import { bannerRouter } from './routes/banner.routes';
+import { playEarnRouter } from './routes/playEarn.routes';
+import { videoContentRouter } from './routes/videoContent.routes';
+import { cashbackRouter } from './routes/cashback.routes';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -98,6 +104,12 @@ export function createApp(): Application {
   app.use('/api', newsRouter);
   app.use('/api', categoryRouter);
   app.use('/api', offerRouter);
+  app.use('/api', uploadRouter);
+  app.use('/api', attendanceRouter);
+  app.use('/api', bannerRouter);
+  app.use('/api', playEarnRouter);
+  app.use('/api', videoContentRouter);
+  app.use('/api', cashbackRouter);
   app.use('/', privacyRouter);
 
   // 404 Fallback

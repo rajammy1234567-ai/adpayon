@@ -9,6 +9,8 @@ import { OTPVerifyScreen } from '../screens/auth/OTPVerifyScreen';
 import { SignupScreen } from '../screens/auth/SignupScreen';
 import { SplashScreen } from '../screens/auth/SplashScreen';
 import { DailyStreakScreen } from '../screens/gamification/DailyStreakScreen';
+import { PlayAndEarnScreen } from '../screens/gamification/PlayAndEarnScreen';
+import { VideoWallScreen } from '../screens/earn/VideoWallScreen';
 import { RankRewardsScreen } from '../screens/gamification/RankRewardsScreen';
 import { ScratchEarnScreen } from '../screens/gamification/ScratchEarnScreen';
 import { ChallengeListScreen } from '../screens/onboarding/ChallengeListScreen';
@@ -81,6 +83,8 @@ export const RootNavigator: React.FC = () => {
             <Stack.Screen name="ScratchEarn" component={ScratchEarnScreen} />
             <Stack.Screen name="RankRewards" component={RankRewardsScreen} />
             <Stack.Screen name="DailyStreak" component={DailyStreakScreen} />
+            <Stack.Screen name="PlayAndEarn" component={PlayAndEarnScreen} />
+            <Stack.Screen name="VideoWall" component={VideoWallScreen} />
             <Stack.Screen name="MobileRecharge" component={MobileRechargeScreen} />
             <Stack.Screen name="ShoppingCashback" component={ShoppingCashbackScreen} />
             <Stack.Screen name="KycUpload" component={KycUploadScreen} />

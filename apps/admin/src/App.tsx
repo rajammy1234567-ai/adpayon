@@ -18,6 +18,10 @@ import { NewsManagement } from './pages/NewsManagement';
 import { CategoriesManagement } from './pages/CategoriesManagement';
 import { OffersManagement } from './pages/OffersManagement';
 import { CreateEditOffer } from './pages/CreateEditOffer';
+import { BannersManagement } from './pages/BannersManagement';
+import { PlayEarnManagement } from './pages/PlayEarnManagement';
+import { CashbackManagement } from './pages/CashbackManagement';
+import { VideosManagement } from './pages/VideosManagement';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -69,6 +73,10 @@ export const App: React.FC = () => {
               <Route path="offers" element={<OffersManagement />} />
             <Route path="offers/new" element={<CreateEditOffer />} />
             <Route path="offers/:id/edit" element={<CreateEditOffer />} />
+            <Route path="banners" element={<BannersManagement />} />
+            <Route path="play-earn" element={<PlayEarnManagement />} />
+            <Route path="cashback" element={<CashbackManagement />} />
+            <Route path="videos" element={<VideosManagement />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="profile" element={<AdminProfile />} />
           </Route>

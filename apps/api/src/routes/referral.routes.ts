@@ -5,6 +5,7 @@ import {
   getDirectReferrals,
   getTreeChildren,
   getDownline,
+  getReferralLeaderboard,
 } from '../controllers/referral.controller';
 
 export const referralRouter = Router();
@@ -14,3 +15,4 @@ referralRouter.get('/summary', requireAuth, getReferralSummary);
 referralRouter.get('/directs', requireAuth, getDirectReferrals);
 referralRouter.get('/tree', requireAuth, getTreeChildren);
 referralRouter.get('/downline', requireAuth, getDownline);
+referralRouter.get('/leaderboard', requireAuth, getReferralLeaderboard);

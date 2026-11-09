@@ -1002,16 +1002,16 @@ export const ArticleReadTaskScreen: React.FC = () => {
           setShowSuccessModal(false);
           navigation.goBack();
         }}
-        title="Promotional Points Awarded!"
+        title="Submitted for Review!"
       >
         <View style={styles.successModalContent}>
-          <Text style={styles.successEmoji}>🎉</Text>
-          <Text style={styles.successTitle}>Task Completed!</Text>
+          <Text style={styles.successEmoji}>📋</Text>
+          <Text style={styles.successTitle}>Pending Admin Verification</Text>
           <Text style={styles.successMessage}>
-            Task completed — {completionResult?.points || 10} promotional points added.
+            Your reading completion has been submitted to the admin queue. +{completionResult?.points || 10} PTS (${(((completionResult?.points || 10) * 0.001)).toFixed(2)} USD) will be credited upon approval.
           </Text>
           <View style={styles.pointsBadge}>
-            <Text style={styles.pointsValue}>+{completionResult?.points || 10} PTS</Text>
+            <Text style={styles.pointsValue}>+{completionResult?.points || 10} PTS (${(((completionResult?.points || 10) * 0.001)).toFixed(2)})</Text>
           </View>
           <Button
             title="Back to Earn Hub"

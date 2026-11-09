@@ -1,6 +1,18 @@
 import { apiClient } from './client';
 
 export interface WalletSummaryResponse {
+  availablePoints: number;
+  availableUsd: number;
+  reservedPoints: number;
+  reservedUsd: number;
+  totalEarnedPoints: number;
+  totalEarnedUsd: number;
+  totalWithdrawnPoints: number;
+  totalWithdrawnUsd: number;
+  pointsConversionRate?: string;
+  minWithdrawalPoints?: number;
+  minWithdrawalUsd?: number;
+  // Legacy INR fields
   availableBalancePaise: number;
   availableBalanceRupees: number;
   confirmedBalancePaise: number;
@@ -22,6 +34,7 @@ export interface WalletTransactionItem {
   amountPaise: number;
   amountRupees: number;
   pointsEquivalent: number;
+  usdEquivalent?: number;
   rewardKind?: 'CASH' | 'PROMOTIONAL_POINTS';
   status: string;
   notes: string;
@@ -56,20 +69,25 @@ export async function fetchWalletTransactionsApi(
 }
 
 export async function submitWithdrawalApi(payload: {
-  amountPaise: number;
-  payoutMode: 'UPI' | 'BANK_TRANSFER' | 'USD_ACCOUNT';
-  currency?: 'INR' | 'USD';
+  pointsAmount?: number;
+  amountPaise?: number;
+  payoutMode: 'BANK_ACCOUNT' | 'USDT_WALLET' | 'BANK_TRANSFER' | 'UPI' | 'USD_ACCOUNT';
+  accountPassword: string;
+  currency?: 'USD' | 'INR';
   quoteToken?: string;
   idempotencyKey?: string;
   beneficiaryDetails: {
-    usdAccount?: string;
-    upiId?: string;
     accountHolderName?: string;
     accountNumber?: string;
     ifscCode?: string;
+    bankName?: string;
+    usdtAddress?: string;
+    network?: 'BEP20';
+    usdAccount?: string;
+    upiId?: string;
   };
 }) {
-  const res = await apiClient<ApiResponse<{ withdrawal: any; remainingBalancePaise: number }>>(
+  const res = await apiClient<ApiResponse<{ withdrawal: any; remainingPoints?: number }>>(
     '/wallet/withdraw',
     {
       method: 'POST',
@@ -104,11 +122,35 @@ export async function deleteAccountApi() {
   return res.data;
 }
 
-export interface RedemptionOptions { usdEnabled: boolean; paisePerUsd: number | null; usdInstructions: string; minWithdrawalPaise: number; version: number }
-export interface RedemptionQuote { token: string; currency: 'INR' | 'USD'; amountPaise: number; payoutMinor: number; paisePerUsd: number | null; expiresAt: string; feePaise: number }
-export async function fetchRedemptionOptions() {
-  return (await apiClient<ApiResponse<RedemptionOptions>>('/wallet/redemption-options', { method: 'GET', requiresAuth: true })).data;
+export interface RedemptionOptions {
+  usdEnabled: boolean;
+  minPaise: number;
+  paisePerUsd?: number | null;
+  usdInstructions?: string;
 }
-export async function fetchRedemptionQuote(amountPaise: number, currency: 'INR' | 'USD') {
-  return (await apiClient<ApiResponse<RedemptionQuote>>('/wallet/redemption-quote', { method: 'POST', requiresAuth: true, body: JSON.stringify({ amountPaise, currency }) })).data;
+
+export interface RedemptionQuote {
+  token: string;
+  amountPaise: number;
+  currency: 'INR' | 'USD';
+  payoutMinor: number;
+  paisePerUsd?: number;
+  expiresAt: string;
+}
+
+export async function fetchRedemptionOptions(): Promise<RedemptionOptions> {
+  const res = await apiClient<ApiResponse<RedemptionOptions>>('/wallet/redemption-policy', {
+    method: 'GET',
+    requiresAuth: true,
+  });
+  return res.data;
+}
+
+export async function fetchRedemptionQuote(amountPaise: number, currency: 'INR' | 'USD'): Promise<RedemptionQuote> {
+  const res = await apiClient<ApiResponse<RedemptionQuote>>('/wallet/quote', {
+    method: 'POST',
+    body: JSON.stringify({ amountPaise, currency }),
+    requiresAuth: true,
+  });
+  return res.data;
 }

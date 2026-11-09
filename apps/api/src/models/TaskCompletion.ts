@@ -10,10 +10,13 @@ export interface ITaskCompletion extends Document {
   userId: Types.ObjectId;
   assignmentId: Types.ObjectId;
   clickId: string;
-  rewardPoints: number; // Promotional points credited
+  rewardPoints: number; // Target reward points
   status: CompletionStatus;
   verificationMethod: VerificationMethod;
   evidenceId?: Types.ObjectId;
+  proofFileId?: string;
+  proofUrl?: string;
+  notes?: string;
   completedAt: Date;
   rejectionReason?: string;
   adminReviewNotes?: string;
@@ -62,7 +65,7 @@ const taskCompletionSchema = new Schema<ITaskCompletion>(
     status: {
       type: String,
       enum: ['VERIFIED', 'REJECTED', 'FLAGGED', 'PENDING_REVIEW'],
-      default: 'VERIFIED',
+      default: 'PENDING_REVIEW',
     },
     verificationMethod: {
       type: String,
@@ -72,6 +75,19 @@ const taskCompletionSchema = new Schema<ITaskCompletion>(
     evidenceId: {
       type: Schema.Types.ObjectId,
       ref: 'VerificationEvidence',
+    },
+    proofFileId: {
+      type: String,
+      trim: true,
+    },
+    proofUrl: {
+      type: String,
+      trim: true,
+    },
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: [2000, 'Notes cannot exceed 2000 characters'],
     },
     completedAt: {
       type: Date,

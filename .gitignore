@@ -54,3 +54,4 @@ Thumbs.db
 logs/
 *.log
 test-manifest*.json
+scratch/

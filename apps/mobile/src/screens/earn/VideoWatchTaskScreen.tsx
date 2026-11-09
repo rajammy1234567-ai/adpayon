@@ -597,17 +597,16 @@ export const VideoWatchTaskScreen: React.FC = () => {
           setIsCompleted(false);
           navigation.goBack();
         }}
-        title="Promotional Reward Verified!"
+        title="Submitted for Review!"
       >
         <View style={styles.modalContent}>
-          <Text style={styles.modalSuccessIcon}>🎉</Text>
-          <Text style={styles.modalTitle}>Reward Credited!</Text>
+          <Text style={styles.modalSuccessIcon}>📋</Text>
+          <Text style={styles.modalTitle}>Pending Admin Verification</Text>
           <Text style={styles.modalPoints}>
-            +{completionResult?.points || 0} PTS
+            +{completionResult?.points || 0} PTS (${(((completionResult?.points || 0) * 0.001)).toFixed(2)} USD)
           </Text>
           <Text style={styles.modalSubtitle}>
-            Your video watch has been verified by the server. Promotional reward points
-            have been added to your balance.
+            Your video playback session has been submitted to the admin review queue. Points will be credited to your balance upon verification.
           </Text>
           <Button
             title="Done"

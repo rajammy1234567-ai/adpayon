@@ -15,6 +15,10 @@ import {
   Newspaper,
   Tag,
   Gift,
+  Gamepad2,
+  Store,
+  Video,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isSandboxMode } from '../../services/api';
@@ -33,6 +37,10 @@ export const AdminLayout: React.FC = () => {
     { to: '/redemptions', label: 'Redemption & Payouts', icon: <Gift className="w-5 h-5" /> },
     { to: '/offer-submissions', label: 'Offer Verification', icon: <Gift className="w-5 h-5" /> },
     { to: '/offers', label: 'Offers & Earn', icon: <Gift className="w-5 h-5" /> },
+    { to: '/cashback', label: 'Cashback & Stores', icon: <Store className="w-5 h-5" /> },
+    { to: '/play-earn', label: 'Play & Earn', icon: <Gamepad2 className="w-5 h-5" /> },
+    { to: '/videos', label: 'Video Wall', icon: <Video className="w-5 h-5" /> },
+    { to: '/banners', label: 'Sponsored Banners', icon: <ImageIcon className="w-5 h-5" /> },
     { to: '/completions', label: 'Completion Monitor', icon: <Activity className="w-5 h-5" /> },
     {
       to: '/fraud-queue',

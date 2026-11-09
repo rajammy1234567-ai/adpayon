@@ -498,29 +498,9 @@ export async function verifyYouTubeLearning(req: AuthenticatedRequest, res: Resp
                 clickId: updatedAssignment.clickId,
                 rewardPoints: task.rewardPoints,
                 verificationMethod: 'FIRST_PARTY_ACTION',
-                status: 'VERIFIED',
+                status: 'PENDING_REVIEW',
                 completedAt: new Date(),
                 evidenceId: evidenceDocs[0]._id,
-              },
-            ],
-            { session: dbSession }
-          );
-
-          // 5. Wallet Ledger Entry (Task Reward)
-          await WalletLedgerEntry.create(
-            [
-              {
-                userId: user._id,
-                entryType: 'TASK_REWARD',
-                amountPaise: task.rewardPoints,
-                pointsEquivalent: task.rewardPoints,
-                status: 'CONFIRMED',
-                balanceBeforePaise: 0,
-                balanceAfterPaise: task.rewardPoints,
-                referenceEntity: 'TaskCompletion',
-                referenceId: completionDocs[0]._id,
-                idempotencyKey: `yt-reward-${completionDocs[0]._id}`,
-                notes: `Educational learning reward for "${task.title}"`,
               },
             ],
             { session: dbSession }

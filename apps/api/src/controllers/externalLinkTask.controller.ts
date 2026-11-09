@@ -883,29 +883,9 @@ export async function verifyExternalLinkElapsed(req: AuthenticatedRequest, res: 
                 clickId: updatedAssignment.clickId,
                 rewardPoints: task.rewardPoints,
                 verificationMethod: 'FIRST_PARTY_ACTION',
-                status: 'VERIFIED',
+                status: 'PENDING_REVIEW',
                 completedAt: now,
                 evidenceId: evidenceDocs[0]._id,
-              },
-            ],
-            { session: dbSession }
-          );
-
-          // 6. Create WalletLedgerEntry with strict idempotency key (Promotional non-withdrawable points)
-          await WalletLedgerEntry.create(
-            [
-              {
-                userId: user._id,
-                entryType: 'TASK_REWARD',
-                amountPaise: 0, // Promotional points carry 0 withdrawable cash value
-                pointsEquivalent: task.rewardPoints,
-                status: 'CONFIRMED',
-                balanceBeforePaise: 0,
-                balanceAfterPaise: 0,
-                referenceEntity: 'TaskCompletion',
-                referenceId: completionDocs[0]._id,
-                idempotencyKey: `ext-elapsed-reward-${completionDocs[0]._id}`,
-                notes: `Promotional points reward for "${task.title}"`,
               },
             ],
             { session: dbSession }

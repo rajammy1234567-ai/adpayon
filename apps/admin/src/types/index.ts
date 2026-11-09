@@ -152,6 +152,10 @@ export interface TaskCompletion {
   } | string;
   clickId: string;
   rewardPoints: number;
+  usdEquivalent?: number;
+  proofFileId?: string;
+  proofUrl?: string;
+  notes?: string;
   status: CompletionStatus;
   verificationMethod: VerificationMethod;
   evidence?: VerificationEvidence;

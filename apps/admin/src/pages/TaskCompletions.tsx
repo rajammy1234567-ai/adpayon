@@ -29,6 +29,7 @@ export const TaskCompletions: React.FC = () => {
 
   // Evidence Inspection Modal & Review Actions
   const [selectedCompletion, setSelectedCompletion] = useState<TaskCompletion | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [copiedClickId, setCopiedClickId] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
   const [isReviewing, setIsReviewing] = useState(false);
@@ -70,13 +71,17 @@ export const TaskCompletions: React.FC = () => {
 
   const handleReview = async (status: 'VERIFIED' | 'REJECTED') => {
     if (!selectedCompletion) return;
+    if (status === 'REJECTED' && reviewNotes.trim().length < 3) {
+      setReviewError('A mandatory rejection reason (at least 3 characters) is required when rejecting.');
+      return;
+    }
     setIsReviewing(true);
     setReviewError(null);
     try {
       const res = await api.reviewCompletion(selectedCompletion.id, {
         status,
         adminReviewNotes: reviewNotes.trim() || (status === 'VERIFIED' ? 'Approved by admin' : 'Rejected by admin'),
-        rejectionReason: status === 'REJECTED' ? reviewNotes.trim() || 'Submission rejected by administrator' : undefined,
+        rejectionReason: status === 'REJECTED' ? reviewNotes.trim() : undefined,
       });
       if (res.success) {
         setSelectedCompletion(null);
@@ -140,13 +145,16 @@ export const TaskCompletions: React.FC = () => {
       ),
     },
     {
-      header: 'Points',
-      accessor: (row) => (
-        <div className="flex items-center gap-1 font-bold text-amber-300 text-xs">
-          <Sparkles className="w-3 h-3 text-amber-400" />
-          <span>{row.rewardPoints.toLocaleString()} PTS</span>
-        </div>
-      ),
+      header: 'Points & USD',
+      accessor: (row) => {
+        const usdValue = (row.rewardPoints * 0.001).toFixed(2);
+        return (
+          <div className="flex items-center gap-1 font-bold text-amber-300 text-xs">
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>{row.rewardPoints.toLocaleString()} PTS (${usdValue})</span>
+          </div>
+        );
+      },
     },
     {
       header: 'Verification Method',
@@ -301,6 +309,27 @@ export const TaskCompletions: React.FC = () => {
               </div>
             )}
 
+            {selectedCompletion.notes && (
+              <div className="p-3 rounded-xl bg-obsidian-950 border border-obsidian-700 text-xs">
+                <span className="text-slate-400 font-bold block mb-1">User Notes</span>
+                <p className="text-slate-300 whitespace-pre-wrap">{selectedCompletion.notes}</p>
+              </div>
+            )}
+
+            {selectedCompletion.proofUrl && (
+              <div className="space-y-1.5 text-xs">
+                <span className="text-slate-400 font-bold block">Submitted Screenshot Proof</span>
+                <div className="relative inline-block">
+                  <img
+                    src={selectedCompletion.proofUrl}
+                    alt="Proof screenshot"
+                    className="max-h-56 rounded-xl border border-obsidian-700 object-contain bg-black/40 cursor-pointer hover:border-emerald-500 transition"
+                    onClick={() => setPreviewImage(selectedCompletion.proofUrl!)}
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <span className="text-xs font-bold text-white block mb-1.5">Evidence Payload Details</span>
               <pre className="p-4 rounded-xl bg-obsidian-950 border border-obsidian-700 font-mono text-[11px] text-slate-300 overflow-x-auto max-h-60">
@@ -363,6 +392,34 @@ export const TaskCompletions: React.FC = () => {
                 className="rounded-xl border border-obsidian-600 bg-obsidian-800 px-4 py-2 text-xs font-semibold text-white hover:bg-obsidian-700 transition"
               >
                 Close Inspector
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPreviewImage(null)}
+          title="Submitted Proof Image"
+          maxWidth="2xl"
+        >
+          <div className="space-y-4">
+            <div className="flex justify-center bg-black/60 p-4 rounded-xl">
+              <img
+                src={previewImage}
+                alt="Proof Full View"
+                className="max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="px-4 py-1.5 rounded-lg bg-obsidian-800 text-xs font-semibold text-white border border-obsidian-700 hover:bg-obsidian-700"
+              >
+                Close
               </button>
             </div>
           </div>

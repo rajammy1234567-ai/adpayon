@@ -8,12 +8,14 @@ export type WithdrawalStatus =
   | 'REJECTED'
   | 'REVERSED';
 
-export type PayoutMode = 'UPI' | 'BANK_TRANSFER' | 'USD_ACCOUNT';
+export type PayoutMode = 'UPI' | 'BANK_TRANSFER' | 'BANK_ACCOUNT' | 'USDT_WALLET' | 'USD_ACCOUNT';
 
 export interface IWithdrawalRequest extends Document {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   amountPaise: number;
+  pointsAmount?: number;
+  usdAmount?: number;
   feePaise: number;
   netAmountPaise: number;
   payoutMode: PayoutMode;
@@ -28,6 +30,8 @@ export interface IWithdrawalRequest extends Document {
     accountNumber?: string;
     ifscCode?: string;
     bankName?: string;
+    usdtAddress?: string;
+    network?: 'BEP20';
   };
   status: WithdrawalStatus;
   adminReviewNotes?: string;
@@ -51,11 +55,22 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
     amountPaise: {
       type: Number,
       required: [true, 'Withdrawal amount in paise is required'],
-      min: [5000, 'Minimum withdrawal amount is ₹50 (5000 paise)'],
+      min: [0, 'Amount must be non-negative'],
       validate: {
         validator: Number.isInteger,
         message: 'Amount must be an integer',
       },
+    },
+    pointsAmount: {
+      type: Number,
+      min: [1, 'Points must be at least 1'],
+      validate: {
+        validator: (v: any) => v == null || Number.isInteger(v),
+        message: 'Points must be an integer',
+      },
+    },
+    usdAmount: {
+      type: Number,
     },
     feePaise: {
       type: Number,
@@ -75,11 +90,11 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
     },
     payoutMode: {
       type: String,
-      enum: ['UPI', 'BANK_TRANSFER', 'USD_ACCOUNT'],
+      enum: ['UPI', 'BANK_TRANSFER', 'BANK_ACCOUNT', 'USDT_WALLET', 'USD_ACCOUNT'],
       required: [true, 'Payout mode is required'],
     },
-    currency: { type: String, enum: ['INR', 'USD'], default: 'INR' },
-    payoutMinor: { type: Number, validate: Number.isSafeInteger },
+    currency: { type: String, enum: ['INR', 'USD'], default: 'USD' },
+    payoutMinor: { type: Number, validate: (v: any) => v == null || Number.isSafeInteger(v) },
     paisePerUsd: Number,
     policyVersion: Number,
     beneficiaryDetails: {
@@ -89,6 +104,8 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
       accountNumber: { type: String, trim: true },
       ifscCode: { type: String, trim: true, uppercase: true },
       bankName: { type: String, trim: true },
+      usdtAddress: { type: String, trim: true },
+      network: { type: String, enum: ['BEP20'] },
     },
     status: {
       type: String,
@@ -106,7 +123,7 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
     adminReviewNotes: {
       type: String,
       trim: true,
-      maxlength: 1000,
+      maxlength: [1000, 'Review notes cannot exceed 1000 characters'],
     },
     reviewedBy: {
       type: Schema.Types.ObjectId,
@@ -115,10 +132,12 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
     payoutReference: {
       type: String,
       trim: true,
+      maxlength: [200, 'Payout reference cannot exceed 200 characters'],
     },
     failureReason: {
       type: String,
       trim: true,
+      maxlength: [500, 'Failure reason cannot exceed 500 characters'],
     },
     processedAt: {
       type: Date,
@@ -132,10 +151,10 @@ const withdrawalRequestSchema = new Schema<IWithdrawalRequest>(
   },
   {
     timestamps: true,
-    collection: 'withdrawal_requests',
   }
 );
 
+// Indexes for common query patterns
 withdrawalRequestSchema.index({ userId: 1, createdAt: -1 });
 withdrawalRequestSchema.index({ status: 1, createdAt: -1 });
 

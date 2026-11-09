@@ -173,3 +173,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         : null,
     })),
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).__authStore = useAuthStore;
+}

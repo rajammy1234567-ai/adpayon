@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { formatPaiseToRupees, QuizLeaderboardEntry } from '@adpayon/shared';
+import { formatPaiseToRupees, QuizLeaderboardEntry, ReferralLeaderboardEntry, formatUsd } from '@adpayon/shared';
+import { getReferralLeaderboardApi } from '../../services/api/features.api';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -31,6 +32,18 @@ export const QuizLeaderboardScreen: React.FC = () => {
   const [score, setScore] = useState(0);
   const [timer, setTimer] = useState(20);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [leaderboardEntries, setLeaderboardEntries] = useState<ReferralLeaderboardEntry[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'LEADERBOARD') {
+      setLeaderboardLoading(true);
+      getReferralLeaderboardApi()
+        .then((data) => setLeaderboardEntries(data || []))
+        .catch((err) => console.error('Leaderboard error:', err))
+        .finally(() => setLeaderboardLoading(false));
+    }
+  }, [activeTab]);
 
   const currentQ = MOCK_QUIZ_QUESTIONS[currentQIndex];
 
@@ -220,53 +233,69 @@ export const QuizLeaderboardScreen: React.FC = () => {
         /* Leaderboard View */
         <View style={styles.leaderboardContent}>
           <Card variant="gold" style={styles.prizePoolCard}>
-            <Text style={styles.prizePoolTitle}>Daily Quiz Prize Pool: ₹1,000.00</Text>
+            <Text style={styles.prizePoolTitle}>Server Earnings Leaderboard</Text>
             <Text style={styles.prizePoolSub}>
-              Top 10 participants split daily pool rewards automatically every midnight!
+              Privacy-masked top performers ranked authoritatively by genuine ledger earnings (1,000 pts = $1.00 USD).
             </Text>
           </Card>
 
-          <FlatList
-            data={MOCK_QUIZ_LEADERBOARD}
-            keyExtractor={(item) => item.userId}
-            renderItem={({ item }) => (
-              <Card
-                variant={item.userId === 'usr_503' ? 'emerald' : 'default'}
-                style={styles.leaderboardRow}
-              >
-                <View style={styles.rankCol}>
-                  <Text
-                    style={[
-                      styles.rankNumber,
-                      item.rank === 1
-                        ? styles.rankGold
-                        : item.rank === 2
-                        ? styles.rankSilver
-                        : item.rank === 3
-                        ? styles.rankBronze
-                        : undefined,
-                    ]}
-                  >
-                    #{item.rank}
-                  </Text>
-                </View>
+          {leaderboardLoading ? (
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, color: THEME.colors.textSecondary }}>
+                Loading server leaderboard...
+              </Text>
+            </View>
+          ) : leaderboardEntries.length === 0 ? (
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: THEME.colors.textPrimary }}>
+                No Ranked Earners Yet
+              </Text>
+              <Text style={{ fontSize: 12, color: THEME.colors.textSecondary, marginTop: 4 }}>
+                Complete Task Hub offers and team tasks to claim the top spot!
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={leaderboardEntries}
+              keyExtractor={(item) => item.rank.toString()}
+              renderItem={({ item }) => (
+                <Card variant="default" style={styles.leaderboardRow}>
+                  <View style={styles.rankCol}>
+                    <Text
+                      style={[
+                        styles.rankNumber,
+                        item.rank === 1
+                          ? styles.rankGold
+                          : item.rank === 2
+                          ? styles.rankSilver
+                          : item.rank === 3
+                          ? styles.rankBronze
+                          : undefined,
+                      ]}
+                    >
+                      #{item.rank}
+                    </Text>
+                  </View>
 
-                <View style={styles.leaderboardInfo}>
-                  <Text style={styles.leaderboardName}>{item.name}</Text>
-                  <Text style={styles.leaderboardMeta}>
-                    {item.score} pts • {item.timeTakenSec}s
-                  </Text>
-                </View>
+                  <View style={styles.leaderboardInfo}>
+                    <Text style={styles.leaderboardName}>{item.maskedName}</Text>
+                    <Text style={styles.leaderboardMeta}>
+                      {item.maskedIdentifier} • {item.directReferralsCount} Directs
+                    </Text>
+                  </View>
 
-                <View style={styles.leaderboardReward}>
-                  <Text style={styles.rewardPaise}>
-                    +{formatPaiseToRupees(item.rewardPaise)}
-                  </Text>
-                  <Text style={styles.rewardTag}>Prize</Text>
-                </View>
-              </Card>
-            )}
-          />
+                  <View style={styles.leaderboardReward}>
+                    <Text style={styles.rewardPaise}>
+                      {item.totalEarnedPoints.toLocaleString()} PTS
+                    </Text>
+                    <Text style={styles.rewardTag}>
+                      {formatUsd(item.totalEarnedUsd)}
+                    </Text>
+                  </View>
+                </Card>
+              )}
+            />
+          )}
         </View>
       )}
     </SafeAreaView>

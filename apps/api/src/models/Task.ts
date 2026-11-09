@@ -87,6 +87,10 @@ export interface ITask extends Document {
   dwellTimeSeconds: number; // For first-party engagement verification
   externalActionUrl?: string; // Redirect template for partner tasks
   instructions?: string;
+  iconUrl?: string;
+  bannerUrl?: string;
+  estimatedMinutes?: number;
+  howToSteps?: Array<{ stepNumber: number; title: string; description: string }>;
   appInstallConfig?: IAppInstallConfig;
   videoWatchConfig?: IVideoWatchConfig;
   articleReadConfig?: IArticleReadConfig;
@@ -203,6 +207,26 @@ const taskSchema = new Schema<ITask>(
       trim: true,
       maxlength: [2000, 'Instructions cannot exceed 2000 characters'],
     },
+    iconUrl: {
+      type: String,
+      trim: true,
+    },
+    bannerUrl: {
+      type: String,
+      trim: true,
+    },
+    estimatedMinutes: {
+      type: Number,
+      default: 5,
+      min: 1,
+    },
+    howToSteps: [
+      {
+        stepNumber: { type: Number, required: true },
+        title: { type: String, required: true, trim: true },
+        description: { type: String, required: true, trim: true },
+      },
+    ],
     appInstallConfig: {
       type: {
         appName: { type: String, trim: true, maxlength: 100 },

@@ -14,6 +14,7 @@ import {
   WalletLedgerEntry,
 } from '../models';
 import { env } from '../config/env';
+import { findProofFile } from '../services/storage/proofStorage';
 import {
   TransactionDiagnosticsTracker,
   VerificationDiagnostic,
@@ -1017,7 +1018,7 @@ export async function verifyFirstPartyAction(req: AuthenticatedRequest, res: Res
                 assignmentId: updatedAssign._id,
                 clickId: updatedAssign.clickId,
                 rewardPoints: task.rewardPoints,
-                status: 'VERIFIED',
+                status: 'PENDING_REVIEW',
                 verificationMethod: 'FIRST_PARTY_ACTION',
                 evidenceId: ev._id,
                 completedAt: new Date(),
@@ -1026,25 +1027,6 @@ export async function verifyFirstPartyAction(req: AuthenticatedRequest, res: Res
             { session }
           );
           insertCompletionMs = performance.now() - t3;
-
-          await WalletLedgerEntry.create(
-            [
-              {
-                userId: user._id,
-                entryType: 'TASK_REWARD',
-                amountPaise: task.rewardPoints,
-                pointsEquivalent: task.rewardPoints,
-                status: 'CONFIRMED',
-                balanceBeforePaise: 0,
-                balanceAfterPaise: task.rewardPoints,
-                referenceEntity: 'TaskCompletion',
-                referenceId: completionDocs[0]._id,
-                idempotencyKey: `fp-task-reward-${completionDocs[0]._id}`,
-                notes: `Reward for completing "${task.title}"`,
-              },
-            ],
-            { session }
-          );
 
           return completionDocs[0];
         };
@@ -1879,29 +1861,9 @@ export async function verifyAppInstall(req: AuthenticatedRequest, res: Response)
                 clickId: updatedAssignment.clickId,
                 rewardPoints: task.rewardPoints,
                 verificationMethod: 'FIRST_PARTY_ACTION',
-                status: 'VERIFIED',
+                status: 'PENDING_REVIEW',
                 completedAt: new Date(),
                 evidenceId: evidenceDocs[0]._id,
-              },
-            ],
-            { session: dbSession }
-          );
-
-          // 5. Credit promotional reward points to wallet ledger (Database-backed idempotency)
-          await WalletLedgerEntry.create(
-            [
-              {
-                userId: user._id,
-                entryType: 'TASK_REWARD',
-                amountPaise: task.rewardPoints,
-                pointsEquivalent: task.rewardPoints,
-                status: 'CONFIRMED',
-                balanceBeforePaise: 0,
-                balanceAfterPaise: task.rewardPoints,
-                referenceEntity: 'TaskCompletion',
-                referenceId: completionDocs[0]._id,
-                idempotencyKey: `app-install-${assignment._id}`,
-                notes: `App install reward for "${task.title}" (${packageName.trim()})`,
               },
             ],
             { session: dbSession }
@@ -2242,5 +2204,194 @@ export async function submitAppFeedback(req: AuthenticatedRequest, res: Response
       error: { code: 'INTERNAL_ERROR', message: err.message || 'Feedback submission failed' },
     });
   }
+}
+
+/**
+ * POST /api/tasks/:id/submit-proof
+ * Submits screenshot proof for an Earn Hub task.
+ * Places submission in PENDING_REVIEW; 0 immediate points credited.
+ * Allows resubmission if previously REJECTED.
+ * Blocks duplicate if PENDING_REVIEW or VERIFIED.
+ */
+export async function submitTaskProof(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const user = req.user!;
+  const { proofFileId, proofUrl: rawProofUrl, notes } = req.body;
+
+  if (!Types.ObjectId.isValid(id)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'Invalid task ID format' },
+    });
+    return;
+  }
+
+  const task = await Task.findById(id);
+  if (!task || task.status !== 'PUBLISHED') {
+    res.status(404).json({
+      success: false,
+      error: { code: 'TASK_NOT_FOUND', message: 'Task not found or is no longer active' },
+    });
+    return;
+  }
+
+  // Extract file ID from proofFileId or proofUrl
+  let fileId = typeof proofFileId === 'string' ? proofFileId.trim() : '';
+  if (!fileId && typeof rawProofUrl === 'string') {
+    const match = rawProofUrl.match(/\/uploads\/proof\/([a-fA-F0-9]{24})/);
+    if (match) fileId = match[1];
+  }
+
+  if (!fileId || !Types.ObjectId.isValid(fileId)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'PROOF_REQUIRED', message: 'Valid uploaded screenshot proof is required.' },
+    });
+    return;
+  }
+
+  // Validate GridFS file existence and ownership
+  const proofFile = await findProofFile(fileId);
+  if (!proofFile) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'PROOF_NOT_FOUND', message: 'The uploaded screenshot file could not be found.' },
+    });
+    return;
+  }
+
+  if (proofFile.metadata?.userId !== user._id.toString()) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'UNAUTHORIZED_PROOF', message: 'You do not have permission to attach this proof file.' },
+    });
+    return;
+  }
+
+  const finalProofUrl = `/api/uploads/proof/${fileId}`;
+
+  // Check for existing completion
+  const existingCompletion = await TaskCompletion.findOne({
+    taskId: task._id,
+    userId: user._id,
+  });
+
+  if (existingCompletion) {
+    if (existingCompletion.status === 'VERIFIED') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'TASK_ALREADY_VERIFIED', message: 'This task has already been completed and verified.' },
+      });
+      return;
+    }
+
+    if (existingCompletion.status === 'PENDING_REVIEW') {
+      res.status(409).json({
+        success: false,
+        error: { code: 'DUPLICATE_SUBMISSION', message: 'A submission for this task is already pending review.' },
+      });
+      return;
+    }
+
+    if (existingCompletion.status === 'REJECTED') {
+      // Allow corrected resubmission
+      existingCompletion.status = 'PENDING_REVIEW';
+      existingCompletion.proofFileId = fileId;
+      existingCompletion.proofUrl = finalProofUrl;
+      existingCompletion.notes = typeof notes === 'string' ? notes.trim() : undefined;
+      existingCompletion.rejectionReason = undefined;
+      existingCompletion.adminReviewNotes = undefined;
+      existingCompletion.reviewedBy = undefined;
+      existingCompletion.completedAt = new Date();
+      await existingCompletion.save();
+
+      await TaskEvent.create({
+        assignmentId: existingCompletion.assignmentId,
+        taskId: task._id,
+        userId: user._id,
+        eventType: 'SUBMIT',
+        payload: {
+          action: 'PROOF_RESUBMITTED',
+          completionId: existingCompletion._id.toString(),
+          proofFileId: fileId,
+        },
+        ipAddress: req.ip || '127.0.0.1',
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          status: 'PENDING_REVIEW',
+          rewardPoints: task.rewardPoints,
+          usdEquivalent: Number((task.rewardPoints * 0.001).toFixed(3)),
+          completionId: existingCompletion._id.toString(),
+          message: 'Task proof resubmitted for admin review. No points credited yet.',
+        },
+      });
+      return;
+    }
+  }
+
+  // Locate or create assignment
+  let assignment = await TaskAssignment.findOne({
+    taskId: task._id,
+    userId: user._id,
+  });
+
+  if (!assignment) {
+    assignment = await TaskAssignment.create({
+      taskId: task._id,
+      campaignId: task.campaignId,
+      userId: user._id,
+      clickId: `task-${task._id}-${user._id}-${Date.now()}`,
+      status: 'COMPLETED',
+      assignedAt: new Date(),
+      expiresAt: new Date(Date.now() + 86400000),
+      dwellTimeAccumulatedSeconds: task.dwellTimeSeconds || 0,
+    });
+  } else {
+    assignment.status = 'COMPLETED';
+    assignment.completedAt = new Date();
+    await assignment.save();
+  }
+
+  const completion = await TaskCompletion.create({
+    taskId: task._id,
+    campaignId: task.campaignId,
+    userId: user._id,
+    assignmentId: assignment._id,
+    clickId: assignment.clickId || `click-${task._id}-${user._id}-${Date.now()}`,
+    rewardPoints: task.rewardPoints,
+    verificationMethod: 'MANUAL_REVIEW',
+    status: 'PENDING_REVIEW',
+    proofFileId: fileId,
+    proofUrl: finalProofUrl,
+    notes: typeof notes === 'string' ? notes.trim() : undefined,
+    completedAt: new Date(),
+  });
+
+  await TaskEvent.create({
+    assignmentId: assignment._id,
+    taskId: task._id,
+    userId: user._id,
+    eventType: 'SUBMIT',
+    payload: {
+      action: 'PROOF_SUBMITTED',
+      completionId: completion._id.toString(),
+      proofFileId: fileId,
+    },
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      status: 'PENDING_REVIEW',
+      rewardPoints: task.rewardPoints,
+      usdEquivalent: Number((task.rewardPoints * 0.001).toFixed(3)),
+      completionId: completion._id.toString(),
+      message: 'Task proof submitted for admin review. No points credited yet.',
+    },
+  });
 }
 

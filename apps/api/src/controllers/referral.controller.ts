@@ -467,3 +467,71 @@ export async function getDownline(
     },
   });
 }
+
+/**
+ * GET /api/referrals/leaderboard
+ * Returns privacy-masked leaderboard derived strictly from genuine server-side ledger earnings.
+ */
+export async function getReferralLeaderboard(
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  try {
+    // Aggregate confirmed credited points by user
+    const topEarners = await WalletLedgerEntry.aggregate([
+      {
+        $match: {
+          type: 'CREDIT',
+          status: 'CONFIRMED',
+          pointsAmount: { $gt: 0 },
+        },
+      },
+      {
+        $group: {
+          _id: '$userId',
+          totalPoints: { $sum: '$pointsAmount' },
+          totalUsd: { $sum: '$usdAmount' },
+        },
+      },
+      { $sort: { totalPoints: -1 } },
+      { $limit: 20 },
+    ]);
+
+    if (!topEarners || topEarners.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    const userIds = topEarners.map((e) => e._id);
+    const users = await User.find({ _id: { $in: userIds }, role: 'USER' }).select(
+      'name mobile directReferralsCount'
+    );
+    const userMap = new Map<string, IUser>();
+    for (const u of users) {
+      userMap.set(u._id.toString(), u);
+    }
+
+    const leaderboard = topEarners
+      .filter((entry) => userMap.has(entry._id.toString()))
+      .map((entry, index) => {
+        const u = userMap.get(entry._id.toString())!;
+        const points = Math.round(entry.totalPoints);
+        const usdValue = Number((points / 1000).toFixed(3));
+
+        return {
+          rank: index + 1,
+          maskedName: maskName(u.name),
+          maskedIdentifier: maskMobile(u.mobile),
+          directReferralsCount: u.directReferralsCount || 0,
+          totalEarnedPoints: points,
+          totalEarnedUsd: usdValue,
+        };
+      });
+
+    res.json({ success: true, data: leaderboard });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to retrieve referral leaderboard');
+    res.status(500).json({ success: false, error: { message: 'Failed to retrieve leaderboard' } });
+  }
+}
+
