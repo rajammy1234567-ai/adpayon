@@ -16,16 +16,15 @@ declare const process: {
  * - Physical Android: Configure EXPO_PUBLIC_API_URL with your dev PC's LAN IP (e.g. http://192.168.1.X:5000/api)
  */
 function resolveApiBaseUrl(): string {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://127.0.0.1:5001/api';
-    }
-  }
-
   const configuredUrl = (process.env.EXPO_PUBLIC_API_URL || process.env.API_BASE_URL)?.trim();
 
   let resolved = configuredUrl;
   if (!resolved) {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://127.0.0.1:5001/api';
+      }
+    }
     if (Platform.OS === 'android') {
       resolved = 'http://10.0.2.2:5000/api';
     } else {
