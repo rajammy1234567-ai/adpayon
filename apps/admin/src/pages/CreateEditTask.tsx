@@ -24,6 +24,7 @@ import {
   Download,
   Users,
   Target,
+  ExternalLink,
 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
 import { Campaign, TaskCategory, VerificationMethod } from '../types';
@@ -453,44 +454,53 @@ export const CreateEditTask: React.FC = () => {
       if (!effArticleTitle || effArticleTitle.length < 3) {
         errs.articleTitle = 'Article title must be at least 3 characters';
       }
-      if (!articleContent.trim() || articleContent.trim().length < 30) {
-        errs.articleContent = 'Article content must contain at least 30 characters';
-      }
-      if (minReadDurationSeconds < 5) {
-        errs.minReadDurationSeconds = 'Minimum read duration must be at least 5 seconds';
-      }
-      if (enableQuiz) {
-        if (!quizQuestion.trim() || quizQuestion.trim().length < 5) {
-          errs.quizQuestion = 'Quiz question must contain at least 5 characters';
+      if (verificationMethod === 'MANUAL_REVIEW') {
+        if (!sourceUrl.trim() && !externalActionUrl.trim()) {
+          errs.sourceUrl = 'Article or destination news URL is required';
         }
-        const validOpts = quizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
-        if (validOpts.length < 2) {
-          errs.quizOptions = 'At least 2 non-empty quiz options are required';
+      } else {
+        if (!articleContent.trim() || articleContent.trim().length < 30) {
+          errs.articleContent = 'Article content must contain at least 30 characters';
         }
-        if (quizCorrectOptionIndex >= validOpts.length) {
-          errs.quizCorrectOptionIndex = 'Correct answer must point to an active option';
+        if (minReadDurationSeconds < 5) {
+          errs.minReadDurationSeconds = 'Minimum read duration must be at least 5 seconds';
+        }
+        if (enableQuiz) {
+          if (!quizQuestion.trim() || quizQuestion.trim().length < 5) {
+            errs.quizQuestion = 'Quiz question must contain at least 5 characters';
+          }
+          const validOpts = quizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
+          if (validOpts.length < 2) {
+            errs.quizOptions = 'At least 2 non-empty quiz options are required';
+          }
+          if (quizCorrectOptionIndex >= validOpts.length) {
+            errs.quizCorrectOptionIndex = 'Correct answer must point to an active option';
+          }
         }
       }
     } else if (category === 'VIDEO_WATCH') {
-      if (!videoUrl.trim() || !/^https?:\/\//i.test(videoUrl.trim())) {
+      const effVideoUrl = videoUrl.trim() || externalActionUrl.trim();
+      if (!effVideoUrl || !/^https?:\/\//i.test(effVideoUrl)) {
         errs.videoUrl = 'Valid HTTP/HTTPS video URL is required';
       }
-      if (videoDuration < 5) {
-        errs.videoDuration = 'Video duration must be at least 5 seconds';
-      }
-      if (requiredWatchSeconds < 5 || requiredWatchSeconds > videoDuration) {
-        errs.requiredWatchSeconds = 'Required watch time must be between 5s and the total duration';
-      }
-      if (enableVideoQuiz) {
-        if (!videoQuizQuestion.trim() || videoQuizQuestion.trim().length < 5) {
-          errs.videoQuizQuestion = 'Verification question must contain at least 5 characters';
+      if (verificationMethod !== 'MANUAL_REVIEW') {
+        if (videoDuration < 5) {
+          errs.videoDuration = 'Video duration must be at least 5 seconds';
         }
-        const validOpts = videoQuizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
-        if (validOpts.length < 2) {
-          errs.videoQuizOptions = 'At least 2 non-empty quiz options are required';
+        if (requiredWatchSeconds < 5 || requiredWatchSeconds > videoDuration) {
+          errs.requiredWatchSeconds = 'Required watch time must be between 5s and the total duration';
         }
-        if (videoQuizCorrectOptionIndex >= validOpts.length) {
-          errs.videoQuizCorrectOptionIndex = 'Correct answer must point to an active option';
+        if (enableVideoQuiz) {
+          if (!videoQuizQuestion.trim() || videoQuizQuestion.trim().length < 5) {
+            errs.videoQuizQuestion = 'Verification question must contain at least 5 characters';
+          }
+          const validOpts = videoQuizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
+          if (validOpts.length < 2) {
+            errs.videoQuizOptions = 'At least 2 non-empty quiz options are required';
+          }
+          if (videoQuizCorrectOptionIndex >= validOpts.length) {
+            errs.videoQuizCorrectOptionIndex = 'Correct answer must point to an active option';
+          }
         }
       }
     } else if (category === 'YOUTUBE_LEARNING') {
@@ -531,10 +541,24 @@ export const CreateEditTask: React.FC = () => {
     let articleReadConfig: any = undefined;
     if (category === 'ARTICLE_READ') {
       const validOptions = quizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
+      const effectiveContent =
+        articleContent.trim().length >= 30
+          ? articleContent.trim()
+          : (
+              description.trim() +
+              ' ' +
+              instructions.trim() +
+              ' ' +
+              title.trim() +
+              ' Read news article on destination link and upload screenshot proof.'
+            )
+              .trim()
+              .padEnd(30, '.');
+
       articleReadConfig = {
         articleTitle: articleTitle.trim() || title.trim(),
-        articleContent: articleContent.trim(),
-        sourceUrl: sourceUrl.trim() || undefined,
+        articleContent: effectiveContent,
+        sourceUrl: sourceUrl.trim() || externalActionUrl.trim() || undefined,
         minReadDurationSeconds: Number(minReadDurationSeconds) || 30,
         minScrollPercentage: Number(minScrollPercentage) || 80,
         comprehensionQuiz:
@@ -552,7 +576,7 @@ export const CreateEditTask: React.FC = () => {
     if (category === 'VIDEO_WATCH') {
       const validOpts = videoQuizOptions.map((o) => o.trim()).filter((o) => o.length > 0);
       videoWatchConfig = {
-        videoUrl: videoUrl.trim(),
+        videoUrl: videoUrl.trim() || externalActionUrl.trim(),
         videoDuration: Number(videoDuration) || 60,
         videoDurationSeconds: Number(videoDuration) || 60,
         requiredWatchSeconds: Number(requiredWatchSeconds) || 30,
@@ -633,13 +657,13 @@ export const CreateEditTask: React.FC = () => {
       description: resolvedDescription,
       category,
       verificationMethod:
-        category === 'APP_INSTALL' && appAttributionMethod === 'MANUAL_REVIEW'
+        verificationMethod === 'MANUAL_REVIEW'
+          ? 'MANUAL_REVIEW'
+          : category === 'APP_INSTALL' && appAttributionMethod === 'MANUAL_REVIEW'
           ? 'MANUAL_REVIEW'
           : category === 'APP_TESTING' && appAttributionMethod === 'MANUAL_REVIEW'
           ? 'MANUAL_REVIEW'
-          : isFirstParty
-          ? 'FIRST_PARTY_ACTION'
-          : verificationMethod,
+          : verificationMethod || 'FIRST_PARTY_ACTION',
       rewardPoints: Number(rewardPoints),
       totalCap: Number(totalCap),
       dailyCapPerUser: Number(dailyCapPerUser),
@@ -657,7 +681,10 @@ export const CreateEditTask: React.FC = () => {
         assignedUserIds: assignedUserIds.length > 0 ? assignedUserIds : undefined,
         userGroups: userGroups.length > 0 ? userGroups : undefined,
       },
-      externalActionUrl: externalActionUrl.trim() || undefined,
+      externalActionUrl:
+        externalActionUrl.trim() ||
+        (category === 'VIDEO_WATCH' ? videoUrl.trim() : category === 'ARTICLE_READ' ? sourceUrl.trim() : undefined) ||
+        undefined,
       instructions: instructions.trim() || undefined,
       articleReadConfig,
       videoWatchConfig,
@@ -959,6 +986,72 @@ export const CreateEditTask: React.FC = () => {
                     <div>
                       <div className="text-xs font-bold text-white">App Testing & Feedback</div>
                       <div className="text-[11px] text-slate-400 mt-0.5">Voluntary Play Store test & in-app feedback submission.</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Verification Method *
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVerificationMethod('MANUAL_REVIEW');
+                      setEnableQuiz(false);
+                      setEnableVideoQuiz(false);
+                      setEnableYouTubeQuiz(false);
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
+                      verificationMethod === 'MANUAL_REVIEW'
+                        ? 'border-amber-500 bg-amber-950/30 ring-1 ring-amber-500/50'
+                        : 'border-obsidian-700 bg-obsidian-850 hover:border-obsidian-600'
+                    }`}
+                  >
+                    <ShieldCheck className={`w-5 h-5 shrink-0 mt-0.5 ${verificationMethod === 'MANUAL_REVIEW' ? 'text-amber-400' : 'text-slate-400'}`} />
+                    <div>
+                      <div className="text-xs font-bold text-white">Manual Review (Proof Upload)</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        User performs external action (Watch video, Read news, etc.) and uploads screenshot proof for admin approval.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVerificationMethod('FIRST_PARTY_ACTION')}
+                    className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
+                      verificationMethod === 'FIRST_PARTY_ACTION'
+                        ? 'border-emerald-500 bg-emerald-950/30 ring-1 ring-emerald-500/50'
+                        : 'border-obsidian-700 bg-obsidian-850 hover:border-obsidian-600'
+                    }`}
+                  >
+                    <Sparkles className={`w-5 h-5 shrink-0 mt-0.5 ${verificationMethod === 'FIRST_PARTY_ACTION' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                    <div>
+                      <div className="text-xs font-bold text-white">First-Party Telemetry</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        In-app dwell time, scroll depth, session heartbeat & comprehension quiz.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVerificationMethod('AUTHENTICATED_WEBHOOK')}
+                    className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
+                      verificationMethod === 'AUTHENTICATED_WEBHOOK'
+                        ? 'border-cyan-500 bg-cyan-950/30 ring-1 ring-cyan-500/50'
+                        : 'border-obsidian-700 bg-obsidian-850 hover:border-obsidian-600'
+                    }`}
+                  >
+                    <ExternalLink className={`w-5 h-5 shrink-0 mt-0.5 ${verificationMethod === 'AUTHENTICATED_WEBHOOK' ? 'text-cyan-400' : 'text-slate-400'}`} />
+                    <div>
+                      <div className="text-xs font-bold text-white">Partner Webhook</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Server-to-server callback from verified external affiliate network.
+                      </div>
                     </div>
                   </button>
                 </div>
@@ -1921,7 +2014,9 @@ export const CreateEditTask: React.FC = () => {
                     className="w-full rounded-xl border border-obsidian-600 bg-obsidian-800/80 pl-9 pr-4 py-2.5 text-sm font-bold text-amber-300 focus:border-emerald-500 focus:outline-none transition"
                   />
                 </div>
-                <p className="mt-1 text-[10px] text-slate-400">Non-withdrawable promotional credit.</p>
+                <p className="mt-1 text-[10px] text-emerald-400 font-medium">
+                  {rewardPoints.toLocaleString()} pts = ${(rewardPoints * 0.001).toFixed(3)} USD (1,000 pts = $1.00 USD)
+                </p>
               </div>
 
               <div>

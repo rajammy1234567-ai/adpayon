@@ -163,8 +163,56 @@ export const OfferDetailsScreen = () => {
     ) : null;
 
   const c = offer?.content || {};
-  const sections: DetailSection[] = ['Benefits', 'Whom to sell?', 'T&C', 'How to perform?', 'FAQs'];
   const usdReward = offer ? (offer.rewardPoints * 0.001).toFixed(2) : '0.00';
+
+  const hasMarketing = Boolean(
+    (c.marketingBanners && c.marketingBanners.length > 0) ||
+      (offer?.images && offer.images.length > 0) ||
+      !!c.marketingMessage
+  );
+
+  const hasTraining = Boolean(
+    (offer?.trainingLinks && offer.trainingLinks.length > 0) ||
+      (c.trackingNotes && c.trackingNotes.length > 0) ||
+      (c.payoutNotes && c.payoutNotes.length > 0)
+  );
+
+  const availableTabs = React.useMemo(() => {
+    const tabs: ('Details' | 'Marketing' | 'Training')[] = ['Details'];
+    if (hasMarketing) tabs.push('Marketing');
+    if (hasTraining) tabs.push('Training');
+    return tabs;
+  }, [hasMarketing, hasTraining]);
+
+  React.useEffect(() => {
+    if (!availableTabs.includes(tab)) {
+      setTab(availableTabs[0] || 'Details');
+    }
+  }, [availableTabs, tab]);
+
+  const hasBenefits = Boolean(offer?.description || (c.benefits && c.benefits.length > 0));
+  const hasEligibility = Boolean(
+    (c.eligibility && c.eligibility.length > 0) || (c.documents && c.documents.length > 0)
+  );
+  const hasSteps = Boolean(offer?.instructions && offer.instructions.length > 0);
+  const hasTerms = Boolean((c.terms && c.terms.length > 0) || offer?.additionalNotes);
+  const hasFaqs = Boolean(offer?.faqs && offer.faqs.length > 0);
+
+  const availableSections = React.useMemo(() => {
+    const list: DetailSection[] = [];
+    if (hasBenefits) list.push('Benefits');
+    if (hasEligibility) list.push('Whom to sell?');
+    if (hasSteps) list.push('How to perform?');
+    if (hasTerms) list.push('T&C');
+    if (hasFaqs) list.push('FAQs');
+    return list;
+  }, [hasBenefits, hasEligibility, hasSteps, hasTerms, hasFaqs]);
+
+  React.useEffect(() => {
+    if (availableSections.length > 0 && !availableSections.includes(section)) {
+      setSection(availableSections[0]);
+    }
+  }, [availableSections, section]);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
@@ -204,11 +252,34 @@ export const OfferDetailsScreen = () => {
                 />
               )}
               <View style={styles.heroHeading}>
-                {!!c.logoUrl && (
+                {!!c.logoUrl ? (
                   <Image source={{ uri: c.logoUrl }} resizeMode="contain" style={styles.logo} />
+                ) : (
+                  <View style={[styles.logo, { alignItems: 'center', justifyContent: 'center' }]}>
+                    <Coins size={28} color={THEME.colors.primary} />
+                  </View>
                 )}
-                <Text style={styles.heroTitle}>{offer.title}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.heroTitle}>{offer.title}</Text>
+                  <Text style={styles.heroSubtitle}>
+                    Earn {offer.rewardPoints.toLocaleString()} PTS (${usdReward} USD)
+                  </Text>
+                </View>
               </View>
+
+              {/* Prominent BankSathi Style Apply / Open Link Button */}
+              {!!offer.completionConditions?.targetUrl && (
+                <View style={styles.heroActionWrapper}>
+                  <TouchableOpacity
+                    style={styles.applyNowBtn}
+                    activeOpacity={0.88}
+                    onPress={() => open(offer.completionConditions.targetUrl!)}
+                  >
+                    <Text style={styles.applyNowText}>Apply / Open Application Link ↗</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               <View style={styles.stats}>
                 {[
                   ['Reward', `${offer.rewardPoints.toLocaleString()} PTS ($${usdReward})`],
@@ -223,105 +294,103 @@ export const OfferDetailsScreen = () => {
               </View>
             </View>
 
-            <View style={styles.tabs}>
-              {(['Details', 'Marketing', 'Training'] as const).map((t) => (
-                <TouchableOpacity
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: tab === t }}
-                  key={t}
-                  style={[styles.tab, tab === t && styles.tabActive]}
-                  onPress={() => setTab(t)}
-                >
-                  <Text style={[styles.tabText, tab === t && styles.red]}>{t}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {availableTabs.length > 1 && (
+              <View style={styles.tabs}>
+                {availableTabs.map((t) => (
+                  <TouchableOpacity
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: tab === t }}
+                    key={t}
+                    style={[styles.tab, tab === t && styles.tabActive]}
+                    onPress={() => setTab(t)}
+                  >
+                    <Text style={[styles.tabText, tab === t && styles.red]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             {tab === 'Details' && (
               <>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chips}
-                >
-                  {sections.map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: section === s }}
-                      style={[styles.chip, section === s && styles.chipActive]}
-                      onPress={() => setSection(s)}
-                    >
-                      <Text style={section === s ? styles.white : styles.tabText}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                {availableSections.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chips}
+                  >
+                    {availableSections.map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: section === s }}
+                        style={[styles.chip, section === s && styles.chipActive]}
+                        onPress={() => setSection(s)}
+                      >
+                        <Text style={section === s ? styles.white : styles.tabText}>{s}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
                 {section === 'Benefits' && (
                   <>
-                    <View style={styles.card}>
-                      <Text style={styles.heading}>About this offer</Text>
-                      <Text style={styles.body}>{offer.description}</Text>
-                    </View>
+                    {!!offer.description && (
+                      <View style={styles.card}>
+                        <Text style={styles.heading}>About this offer</Text>
+                        <Text style={styles.body}>{offer.description}</Text>
+                      </View>
+                    )}
                     {points('Benefits', c.benefits)}
                   </>
                 )}
+
                 {section === 'Whom to sell?' && (
                   <>
                     {points('Eligibility criteria', c.eligibility)}
                     {points('Documents required', c.documents)}
-                    {!c.eligibility?.length && !c.documents?.length && (
-                      <Text style={styles.empty}>No eligibility information has been published yet.</Text>
-                    )}
                   </>
                 )}
+
+                {section === 'How to perform?' && (
+                  <View style={styles.card}>
+                    <Text style={styles.heading}>Step-by-step process</Text>
+                    {offer.instructions?.map((text, i) => (
+                      <View key={i} style={styles.point}>
+                        <Text style={styles.step}>{i + 1}.</Text>
+                        <Text style={styles.body}>{text}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
                 {section === 'T&C' && (
                   <>
                     {points('Rules to follow', c.terms)}
                     {!!offer.additionalNotes && (
                       <View style={styles.card}>
+                        <Text style={styles.heading}>Additional Notes</Text>
                         <Text style={styles.body}>{offer.additionalNotes}</Text>
                       </View>
                     )}
-                    {!c.terms?.length && !offer.additionalNotes && (
-                      <Text style={styles.empty}>No terms have been published yet.</Text>
-                    )}
                   </>
                 )}
-                {section === 'How to perform?' && (
-                  <View style={styles.card}>
-                    <Text style={styles.heading}>Step-by-step process</Text>
-                    {offer.instructions?.length ? (
-                      offer.instructions.map((text, i) => (
-                        <View key={i} style={styles.point}>
-                          <Text style={styles.step}>{i + 1}.</Text>
-                          <Text style={styles.body}>{text}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.body}>Instructions have not been published yet.</Text>
-                    )}
-                  </View>
-                )}
+
                 {section === 'FAQs' && (
                   <>
-                    {offer.faqs?.length ? (
-                      offer.faqs.map((faq, i) => (
-                        <TouchableOpacity
-                          key={i}
-                          accessibilityRole="button"
-                          accessibilityState={{ expanded: !!expanded[i] }}
-                          style={styles.card}
-                          onPress={() => setExpanded((p) => ({ ...p, [i]: !p[i] }))}
-                        >
-                          <Text style={styles.heading}>
-                            {i + 1}. {faq.question} {expanded[i] ? '−' : '+'}
-                          </Text>
-                          {expanded[i] && <Text style={styles.body}>{faq.answer}</Text>}
-                        </TouchableOpacity>
-                      ))
-                    ) : (
-                      <Text style={styles.empty}>No FAQs have been published yet.</Text>
-                    )}
+                    {offer.faqs?.map((faq, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: !!expanded[i] }}
+                        style={styles.card}
+                        onPress={() => setExpanded((p) => ({ ...p, [i]: !p[i] }))}
+                      >
+                        <Text style={styles.heading}>
+                          {i + 1}. {faq.question} {expanded[i] ? '−' : '+'}
+                        </Text>
+                        {expanded[i] && <Text style={styles.body}>{faq.answer}</Text>}
+                      </TouchableOpacity>
+                    ))}
                   </>
                 )}
               </>
@@ -563,7 +632,27 @@ const styles = StyleSheet.create({
   heroImage: { width: '100%', height: 145 },
   heroHeading: { padding: 20, flexDirection: 'row', gap: 14, alignItems: 'center' },
   logo: { width: 64, height: 64, backgroundColor: 'white', borderRadius: 12 },
-  heroTitle: { flex: 1, fontSize: 22, fontWeight: '700', color: 'white' },
+  heroTitle: { fontSize: 20, fontWeight: '700', color: 'white' },
+  heroSubtitle: { fontSize: 13, fontWeight: '600', color: '#FEF3C7', marginTop: 4 },
+  heroActionWrapper: { paddingHorizontal: 20, paddingBottom: 16 },
+  applyNowBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  applyNowText: {
+    color: THEME.colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   stats: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#FFFFFF66', marginHorizontal: 20, paddingVertical: 20 },
   stat: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 17, fontWeight: '700', color: 'white' },

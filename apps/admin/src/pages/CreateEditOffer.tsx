@@ -254,7 +254,7 @@ export const CreateEditOffer: React.FC = () => {
     }
   };
 
-  const rupeeEquivalent = ((rewardPoints * 10) / 100).toFixed(2);
+  const usdEquivalent = (rewardPoints * 0.001).toFixed(3);
   const currentCategoryName =
     categories.find((c) => c.id === categoryId)?.name || 'Category';
 
@@ -445,7 +445,7 @@ export const CreateEditOffer: React.FC = () => {
               <div className="flex items-center justify-between text-xs mt-1.5 px-1">
                 <span className="text-slate-400">Integer accounting conversion:</span>
                 <span className="text-emerald-400 font-bold">
-                  {rewardPoints.toLocaleString()} pts = ₹{rupeeEquivalent}
+                  {rewardPoints.toLocaleString()} pts = ${usdEquivalent} USD
                 </span>
               </div>
             </div>
@@ -877,7 +877,7 @@ export const CreateEditOffer: React.FC = () => {
               <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm">
                 <Coins className="w-4 h-4" />
                 <span>{rewardPoints.toLocaleString()} Points</span>
-                <span className="text-emerald-400 text-xs font-normal">(₹{rupeeEquivalent})</span>
+                <span className="text-emerald-400 text-xs font-normal">(${usdEquivalent} USD)</span>
               </div>
             </div>
             <h2 className="text-xl font-bold text-white mt-2">{title || 'Offer Title'}</h2>

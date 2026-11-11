@@ -4,8 +4,10 @@ export interface ISponsoredBanner extends Document {
   _id: Types.ObjectId;
   title: string;
   imageUrl: string;
-  destinationUrl: string;
+  destinationUrl?: string;
   sponsorName: string;
+  ctaText?: string;
+  targetCategory?: string;
   active: boolean;
   displayOrder: number;
   clicksCount: number;
@@ -29,8 +31,19 @@ const sponsoredBannerSchema = new Schema<ISponsoredBanner>(
     },
     destinationUrl: {
       type: String,
-      required: [true, 'Destination URL is required'],
       trim: true,
+      default: '',
+    },
+    ctaText: {
+      type: String,
+      trim: true,
+      default: 'Explore',
+    },
+    targetCategory: {
+      type: String,
+      trim: true,
+      default: 'ALL',
+      index: true,
     },
     sponsorName: {
       type: String,

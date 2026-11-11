@@ -2,7 +2,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type MainTabParamList = {
   Dashboard: undefined;
-  Categories: undefined;
+  Categories: { categoryId?: string; categorySlug?: string } | undefined;
   Wallet: undefined;
   Team: undefined;
   Earn: undefined;
@@ -26,6 +26,7 @@ export type RootStackParamList = {
   DailyStreak: undefined;
   PlayAndEarn: undefined;
   VideoWall: undefined;
+  NewsTasks: undefined;
   MobileRecharge: undefined;
   ShoppingCashback: undefined;
   KycUpload: undefined;

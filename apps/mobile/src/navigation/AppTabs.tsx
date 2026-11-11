@@ -53,6 +53,10 @@ const FloatingTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navig
   const insets = useSafeAreaInsets();
   const bottomOffset = Math.max(insets.bottom, 12) + 8; // Raised by +8dp per layout specification
 
+  if (typeof window !== 'undefined') {
+    (window as any).__tabNavigation = navigation;
+  }
+
   return (
     <View
       style={[

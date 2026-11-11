@@ -278,7 +278,7 @@ export const OffersManagement: React.FC = () => {
                 </tr>
               ) : (
                 filteredOffers.map((offer) => {
-                  const rupeeValue = ((offer.rewardPoints * 10) / 100).toFixed(2);
+                  const usdValue = (offer.rewardPoints * 0.001).toFixed(3);
                   return (
                     <tr key={offer.id} className="hover:bg-obsidian-800/50 transition">
                       <td className="px-6 py-4 font-mono text-xs text-slate-400">
@@ -299,7 +299,7 @@ export const OffersManagement: React.FC = () => {
                           <span>{offer.rewardPoints.toLocaleString()} pts</span>
                         </div>
                         <div className="text-[11px] text-emerald-400 font-medium">
-                          ≈ ₹{rupeeValue}
+                          ≈ ${usdValue} USD
                         </div>
                       </td>
                       <td className="px-6 py-4 text-xs font-mono text-slate-400">
@@ -421,7 +421,7 @@ export const OffersManagement: React.FC = () => {
                   <Coins className="w-4 h-4" />
                   <span>{previewOffer.rewardPoints.toLocaleString()} Points</span>
                   <span className="text-emerald-400 text-xs font-normal">
-                    (₹{((previewOffer.rewardPoints * 10) / 100).toFixed(2)})
+                    (${(previewOffer.rewardPoints * 0.001).toFixed(3)} USD)
                   </span>
                 </div>
               </div>

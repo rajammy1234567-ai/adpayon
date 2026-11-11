@@ -13,6 +13,8 @@ export async function getActiveBanners(req: Request, res: Response): Promise<voi
         imageUrl: b.imageUrl,
         destinationUrl: b.destinationUrl,
         sponsorName: b.sponsorName,
+        ctaText: b.ctaText || 'Explore',
+        targetCategory: b.targetCategory || 'ALL',
         active: b.active,
         displayOrder: b.displayOrder,
         createdAt: b.createdAt.toISOString(),
@@ -46,6 +48,8 @@ export async function adminListBanners(req: Request, res: Response): Promise<voi
         imageUrl: b.imageUrl,
         destinationUrl: b.destinationUrl,
         sponsorName: b.sponsorName,
+        ctaText: b.ctaText || 'Explore',
+        targetCategory: b.targetCategory || 'ALL',
         active: b.active,
         displayOrder: b.displayOrder,
         clicksCount: b.clicksCount,
@@ -61,11 +65,11 @@ export async function adminListBanners(req: Request, res: Response): Promise<voi
 // Admin: Create banner
 export async function adminCreateBanner(req: Request, res: Response): Promise<void> {
   try {
-    const { title, imageUrl, destinationUrl, sponsorName, displayOrder, active } = req.body;
-    if (!title || !imageUrl || !destinationUrl) {
+    const { title, imageUrl, destinationUrl, sponsorName, ctaText, targetCategory, displayOrder, active } = req.body;
+    if (!title || !imageUrl) {
       res.status(400).json({
         success: false,
-        error: { message: 'Title, imageUrl, and destinationUrl are required' },
+        error: { message: 'Title and imageUrl are required' },
       });
       return;
     }
@@ -73,8 +77,10 @@ export async function adminCreateBanner(req: Request, res: Response): Promise<vo
     const banner = new SponsoredBanner({
       title,
       imageUrl,
-      destinationUrl,
+      destinationUrl: destinationUrl || '',
       sponsorName: sponsorName || 'AdPayOn Partner',
+      ctaText: ctaText || 'Explore',
+      targetCategory: targetCategory || 'ALL',
       displayOrder: Number(displayOrder) || 0,
       active: active !== undefined ? Boolean(active) : true,
     });
@@ -88,6 +94,8 @@ export async function adminCreateBanner(req: Request, res: Response): Promise<vo
         imageUrl: banner.imageUrl,
         destinationUrl: banner.destinationUrl,
         sponsorName: banner.sponsorName,
+        ctaText: banner.ctaText,
+        targetCategory: banner.targetCategory,
         active: banner.active,
         displayOrder: banner.displayOrder,
         createdAt: banner.createdAt.toISOString(),
@@ -102,7 +110,7 @@ export async function adminCreateBanner(req: Request, res: Response): Promise<vo
 export async function adminUpdateBanner(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { title, imageUrl, destinationUrl, sponsorName, displayOrder, active } = req.body;
+    const { title, imageUrl, destinationUrl, sponsorName, ctaText, targetCategory, displayOrder, active } = req.body;
 
     const banner = await SponsoredBanner.findById(id);
     if (!banner) {
@@ -114,6 +122,8 @@ export async function adminUpdateBanner(req: Request, res: Response): Promise<vo
     if (imageUrl !== undefined) banner.imageUrl = imageUrl;
     if (destinationUrl !== undefined) banner.destinationUrl = destinationUrl;
     if (sponsorName !== undefined) banner.sponsorName = sponsorName;
+    if (ctaText !== undefined) banner.ctaText = ctaText;
+    if (targetCategory !== undefined) banner.targetCategory = targetCategory;
     if (displayOrder !== undefined) banner.displayOrder = Number(displayOrder);
     if (active !== undefined) banner.active = Boolean(active);
 
@@ -127,6 +137,8 @@ export async function adminUpdateBanner(req: Request, res: Response): Promise<vo
         imageUrl: banner.imageUrl,
         destinationUrl: banner.destinationUrl,
         sponsorName: banner.sponsorName,
+        ctaText: banner.ctaText,
+        targetCategory: banner.targetCategory,
         active: banner.active,
         displayOrder: banner.displayOrder,
         createdAt: banner.createdAt.toISOString(),

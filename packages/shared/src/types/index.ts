@@ -727,8 +727,10 @@ export interface SponsoredBannerItem {
   id: string;
   title: string;
   imageUrl: string;
-  destinationUrl: string;
+  destinationUrl?: string;
   sponsorName: string;
+  ctaText?: string;
+  targetCategory?: string;
   active: boolean;
   displayOrder: number;
   clicksCount?: number;

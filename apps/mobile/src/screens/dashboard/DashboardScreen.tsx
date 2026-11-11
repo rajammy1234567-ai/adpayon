@@ -1,5 +1,3 @@
-import { HomeOffersSection } from '../../components/home/HomeOffersSection';
-import { SponsoredBannersSection } from '../../components/home/SponsoredBannersSection';
 import React, { useState } from 'react';
 import {
   RefreshControl,
@@ -15,8 +13,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { formatPaiseToRupees } from '@adpayon/shared';
 import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { HomeDailyAttendanceCard } from '../../components/home/HomeDailyAttendanceCard';
+import { SponsoredBannersSection } from '../../components/home/SponsoredBannersSection';
+import { HomeOffersSection } from '../../components/home/HomeOffersSection';
 import { HomeNewsSection } from '../../components/home/HomeNewsSection';
 import { THEME } from '../../constants/theme';
 import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
@@ -28,15 +28,18 @@ export const DashboardScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuthStore();
-  const { summary } = useWalletStore();
+  const { summary, fetchSummary } = useWalletStore();
   const bottomSpacing = useBottomTabSpacing();
   const [refreshing, setRefreshing] = useState(false);
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
+    try {
+      await fetchSummary();
+    } catch {}
     setTimeout(() => {
       setRefreshing(false);
-    }, 800);
+    }, 600);
   };
 
   const breakdown = summary.earningsBreakdownPaise;
@@ -54,12 +57,17 @@ export const DashboardScreen: React.FC = () => {
           />
         }
       >
-        {/* User Greeting & Top Bar */}
-        <View style={styles.topHeader}>
-          <View>
-            <Text style={styles.greeting}>{t('dashboard.greeting')},</Text>
-            <Text style={styles.userName}>{user?.name || 'Partner'}</Text>
+        {/* ================================================================= */}
+        {/* 1. COMPACT GREETING / HEADER & WALLET SUMMARY                     */}
+        {/* ================================================================= */}
+        <View style={styles.compactHeaderRow}>
+          <View style={styles.greetingCol}>
+            <Text style={styles.greetingSub}>{t('dashboard.greeting') || 'Welcome back'},</Text>
+            <Text style={styles.userName} numberOfLines={1}>
+              {user?.name || 'Partner'}
+            </Text>
           </View>
+
           <View style={styles.headerRight}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -80,64 +88,214 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Primary Wallet Balance Card */}
-        <Card variant="emerald" style={styles.balanceCard}>
-          <View style={styles.cardHeader}>
-            <View>
-              <Text style={styles.balanceLabel}>{t('dashboard.spendableBalance')}</Text>
-              <Text style={styles.balanceAmount}>
+        {/* Compact Wallet Summary Card */}
+        <Card variant="emerald" style={styles.compactWalletCard}>
+          <View style={styles.walletMainRow}>
+            <View style={styles.balanceInfoCol}>
+              <Text style={styles.walletLabel}>{t('dashboard.spendableBalance') || 'Spendable Balance'}</Text>
+              <Text style={styles.walletAmount}>
                 {formatPaiseToRupees(summary.mainBalancePaise)}
               </Text>
             </View>
-            <Badge
-              label={user?.currentRank || 'ACTIVE'}
-              variant="gold"
-              style={styles.rankBadge}
-            />
+
+            <View style={styles.walletActionCol}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'Wallet' })}
+                style={styles.withdrawQuickBtn}
+              >
+                <Text style={styles.withdrawQuickBtnText}>⚡ Withdraw</Text>
+              </TouchableOpacity>
+              <Badge
+                label={user?.currentRank || 'ACTIVE'}
+                variant="gold"
+                style={styles.rankBadgeCompact}
+              />
+            </View>
           </View>
 
-          <View style={styles.balanceMetaRow}>
-            <View style={styles.metaCol}>
-              <Text style={styles.metaLabel}>{t('dashboard.todayEarnings')}</Text>
-              <Text style={styles.metaValuePositive}>
+          {/* Compact Sub-Stats Row */}
+          <View style={styles.walletStatsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Today:</Text>
+              <Text style={styles.statValuePositive}>
                 +{formatPaiseToRupees(summary.todayEarningsPaise)}
               </Text>
             </View>
-            <View style={styles.metaDivider} />
-            <View style={styles.metaCol}>
-              <Text style={styles.metaLabel}>{t('dashboard.lifetimeEarnings')}</Text>
-              <Text style={styles.metaValue}>
-                {formatPaiseToRupees(summary.lifetimeEarningsPaise)}
-              </Text>
-            </View>
-            <View style={styles.metaDivider} />
-            <View style={styles.metaCol}>
-              <Text style={styles.metaLabel}>{t('dashboard.bonusWallet')}</Text>
-              <Text style={styles.metaValueGold}>
+            <Text style={styles.statDot}>•</Text>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Bonus:</Text>
+              <Text style={styles.statValueGold}>
                 {formatPaiseToRupees(summary.bonusBalancePaise)}
               </Text>
             </View>
-          </View>
-
-          <View style={styles.actionBtnRow}>
-            <Button
-              title="⚡ Withdraw Funds"
-              onPress={() =>
-                navigation.navigate('MainTabs', { screen: 'Wallet' })
-              }
-              variant="primary"
-              size="sm"
-              style={styles.withdrawBtn}
-            />
-            <Button
-              title="👥 Invite Friends"
-              onPress={() => navigation.navigate('ReferralInvite')}
-              variant="secondary"
-              size="sm"
-              style={styles.inviteBtn}
-            />
+            <Text style={styles.statDot}>•</Text>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Lifetime:</Text>
+              <Text style={styles.statValue}>
+                {formatPaiseToRupees(summary.lifetimeEarningsPaise)}
+              </Text>
+            </View>
           </View>
         </Card>
+
+        {/* ================================================================= */}
+        {/* 2. DAILY ATTENDANCE CARD WITH 7-DAY STRIP & CHECK-IN ACTION       */}
+        {/* ================================================================= */}
+        <HomeDailyAttendanceCard />
+
+        {/* ================================================================= */}
+        {/* 3. WIDE SPONSORED BANNER WITH TITLE, CTA & CAROUSEL INDICATORS     */}
+        {/* ================================================================= */}
+        <SponsoredBannersSection />
+
+        {/* ================================================================= */}
+        {/* 4. TWO-COLUMN ACTIVITY CARDS                                       */}
+        {/* ================================================================= */}
+        <View style={styles.activitySectionHeader}>
+          <Text style={styles.activitySectionTitle}>Quick Activities</Text>
+          <Text style={styles.activitySectionSubtitle}>Earn promotional points & rewards</Text>
+        </View>
+
+        <View style={styles.activityGrid}>
+          {/* --- ROW 1: Play & Earn | Tasks --- */}
+          <View style={styles.activityRow}>
+            {/* Play & Earn */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('PlayAndEarn')}
+              style={styles.activityCard}
+            >
+              <View style={[styles.activityIconBox, { backgroundColor: 'rgba(217, 119, 6, 0.12)' }]}>
+                <Text style={styles.activityIcon}>🎡</Text>
+              </View>
+              <View style={styles.activityTextBox}>
+                <Text style={styles.activityTitle}>Play & Earn</Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  Spin, Scratch & Quiz
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Tasks (Task Hub) */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
+              style={styles.activityCard}
+            >
+              <View style={[styles.activityIconBox, { backgroundColor: THEME.colors.emeraldGlow }]}>
+                <Text style={styles.activityIcon}>🎯</Text>
+              </View>
+              <View style={styles.activityTextBox}>
+                <Text style={styles.activityTitle}>Tasks</Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  Task Hub & Offers
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* --- ROW 2: Video Wall | News --- */}
+          <View style={styles.activityRow}>
+            {/* Video Wall */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('VideoWall')}
+              style={styles.activityCard}
+            >
+              <View style={[styles.activityIconBox, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                <Text style={styles.activityIcon}>🎬</Text>
+              </View>
+              <View style={styles.activityTextBox}>
+                <Text style={styles.activityTitle}>Video Wall</Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  Watch & Earn Points
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* News */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('NewsTasks')}
+              style={styles.activityCard}
+            >
+              <View style={[styles.activityIconBox, { backgroundColor: 'rgba(6, 182, 212, 0.12)' }]}>
+                <Text style={styles.activityIcon}>📰</Text>
+              </View>
+              <View style={styles.activityTextBox}>
+                <Text style={styles.activityTitle}>News</Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  Read & Earn Points
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* --- ROW 3: Cashback | Refer & Earn --- */}
+          <View style={styles.activityRow}>
+            {/* Cashback */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('ShoppingCashback')}
+              style={styles.activityCard}
+            >
+              <View style={[styles.activityIconBox, { backgroundColor: 'rgba(220, 38, 38, 0.08)' }]}>
+                <Text style={styles.activityIcon}>🛍️</Text>
+              </View>
+              <View style={styles.activityTextBox}>
+                <Text style={styles.activityTitle}>Cashback</Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  Shopping Rewards
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Refer & Earn */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('ReferralInvite')}
+              style={styles.activityCard}
+            >
+              <View style={[styles.activityIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
+                <Text style={styles.activityIcon}>👥</Text>
+              </View>
+              <View style={styles.activityTextBox}>
+                <Text style={styles.activityTitle}>Refer & Earn</Text>
+                <Text style={styles.activitySubtitle} numberOfLines={1}>
+                  Invite & Earn 55%
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ================================================================= */}
+        {/* SECONDARY SECTIONS (BELOW ACTIVITY CARDS)                         */}
+        {/* ================================================================= */}
+
+        {/* Rank Club Milestone Access */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('RankRewards')}
+          style={styles.rankClubCard}
+        >
+          <View style={styles.rankClubLeft}>
+            <View style={styles.rankClubIconBox}>
+              <Text style={styles.rankClubEmoji}>🏆</Text>
+            </View>
+            <View>
+              <View style={styles.rankClubTitleRow}>
+                <Text style={styles.rankClubTitle}>Rank Club Privileges</Text>
+                <Badge label="EXCLUSIVE" variant="gold" />
+              </View>
+              <Text style={styles.rankClubSubtitle}>
+                Unlock higher matching slabs, binary bonuses & leadership pools
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.rankClubArrow}>→</Text>
+        </TouchableOpacity>
 
         {/* Referral Network Snapshot */}
         <Card variant="default" style={styles.networkCard}>
@@ -170,42 +328,15 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* Partner Offers & Categories Banner */}
-        <Card variant="glass" style={styles.offersBannerCard}>
-          <View style={styles.sectionHeaderRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 16 }}>🎁</Text>
-              <Text style={styles.sectionTitle}>Partner Offers & Earn</Text>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
-            >
-              <Text style={styles.viewMoreText}>Explore All →</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.offersBannerSub}>
-            Discover verified Demat, apps, and shopping offers. Share signed links with your network to earn Level 1–8 commissions.
-          </Text>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
-            style={styles.browseOffersBtn}
-          >
-            <Text style={styles.browseOffersBtnText}>Browse Task Hub Offers</Text>
-          </TouchableOpacity>
-        </Card>
-
-        {/* Admin-Managed Sponsored Banners Carousel */}
-        <SponsoredBannersSection />
-
-        {/* Compact Admin-Curated News Section */}
+        {/* Partner Offers Section */}
         <HomeOffersSection />
+
+        {/* Official Announcements & News */}
         <HomeNewsSection />
 
         {/* Earnings Breakdown by Source */}
         <Card variant="default" style={styles.breakdownCard}>
-          <Text style={styles.sectionTitle}>{t('dashboard.earningsBreakdown')}</Text>
+          <Text style={styles.sectionTitle}>{t('dashboard.earningsBreakdown') || 'Earnings Breakdown'}</Text>
 
           <View style={styles.sourceGrid}>
             <View style={styles.sourceItem}>
@@ -213,7 +344,7 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.sourceEmoji}>📺</Text>
               </View>
               <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{t('dashboard.adsEarnings')}</Text>
+                <Text style={styles.sourceName}>{t('dashboard.adsEarnings') || 'Ads'}</Text>
                 <Text style={styles.sourceAmount}>
                   {formatPaiseToRupees(breakdown.adsPaise)}
                 </Text>
@@ -225,7 +356,7 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.sourceEmoji}>🌳</Text>
               </View>
               <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{t('dashboard.referralsEarnings')}</Text>
+                <Text style={styles.sourceName}>{t('dashboard.referralsEarnings') || 'Referrals'}</Text>
                 <Text style={styles.sourceAmount}>
                   {formatPaiseToRupees(breakdown.referralsPaise)}
                 </Text>
@@ -237,7 +368,7 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.sourceEmoji}>🎯</Text>
               </View>
               <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{t('dashboard.challengesEarnings')}</Text>
+                <Text style={styles.sourceName}>{t('dashboard.challengesEarnings') || 'Tasks'}</Text>
                 <Text style={styles.sourceAmount}>
                   {formatPaiseToRupees(breakdown.challengesPaise)}
                 </Text>
@@ -249,7 +380,7 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.sourceEmoji}>🤝</Text>
               </View>
               <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>Team Matching</Text>
+                <Text style={styles.sourceName}>Matching</Text>
                 <Text style={styles.sourceAmount}>
                   {formatPaiseToRupees(breakdown.binaryPaise)}
                 </Text>
@@ -257,106 +388,6 @@ export const DashboardScreen: React.FC = () => {
             </View>
           </View>
         </Card>
-
-        {/* Home Discovery Hub */}
-        <Text style={styles.sectionHeader}>Activity & Earnings Discovery</Text>
-        <View style={styles.actionGrid}>
-          {/* 1. Attendance */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('DailyStreak')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: THEME.colors.goldGlow }]}>
-              <Text style={styles.gridEmoji}>🔥</Text>
-            </View>
-            <Text style={styles.gridLabel}>Attendance</Text>
-          </TouchableOpacity>
-
-          {/* 2. Play & Earn */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('PlayAndEarn')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(217, 119, 6, 0.12)' }]}>
-              <Text style={styles.gridEmoji}>🎡</Text>
-            </View>
-            <Text style={styles.gridLabel}>Play & Earn</Text>
-          </TouchableOpacity>
-
-          {/* 3. Tasks */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Categories' })}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: THEME.colors.emeraldGlow }]}>
-              <Text style={styles.gridEmoji}>🎯</Text>
-            </View>
-            <Text style={styles.gridLabel}>Task Hub</Text>
-          </TouchableOpacity>
-
-          {/* 4. Video Wall */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('VideoWall')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-              <Text style={styles.gridEmoji}>🎬</Text>
-            </View>
-            <Text style={styles.gridLabel}>Video Wall</Text>
-          </TouchableOpacity>
-
-          {/* 5. News */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('QuizLeaderboard')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: THEME.colors.cyanGlow }]}>
-              <Text style={styles.gridEmoji}>📰</Text>
-            </View>
-            <Text style={styles.gridLabel}>News & Board</Text>
-          </TouchableOpacity>
-
-          {/* 6. Shopping Cashback */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('ShoppingCashback')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(220, 38, 38, 0.08)' }]}>
-              <Text style={styles.gridEmoji}>🛍️</Text>
-            </View>
-            <Text style={styles.gridLabel}>Cashback</Text>
-          </TouchableOpacity>
-
-          {/* 7. Refer & Earn */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('ReferralInvite')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
-              <Text style={styles.gridEmoji}>👥</Text>
-            </View>
-            <Text style={styles.gridLabel}>Refer & Earn</Text>
-          </TouchableOpacity>
-
-          {/* 8. Rank Rewards */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('RankRewards')}
-            style={styles.gridAction}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: THEME.colors.goldGlow }]}>
-              <Text style={styles.gridEmoji}>🏆</Text>
-            </View>
-            <Text style={styles.gridLabel}>Rank Club</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -368,152 +399,278 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.background,
   },
   scroll: {
-    padding: THEME.spacing.lg,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
-  topHeader: {
+  compactHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
+    marginTop: 2,
   },
-  greeting: {
-    fontSize: 13,
+  greetingCol: {
+    flex: 1,
+  },
+  greetingSub: {
+    fontSize: 12,
     color: THEME.colors.textSecondary,
     fontWeight: '500',
   },
   userName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '900',
     color: THEME.colors.textPrimary,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     backgroundColor: THEME.colors.surface,
     borderWidth: 1,
     borderColor: THEME.colors.gold,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 5,
-    borderRadius: THEME.borderRadius.full,
-    ...THEME.shadows.card,
+    borderRadius: 20,
   },
   streakEmoji: {
-    fontSize: 14,
-    marginRight: 4,
+    fontSize: 13,
   },
   streakText: {
-    color: THEME.colors.gold,
-    fontWeight: '800',
     fontSize: 12,
+    fontWeight: '800',
+    color: '#D97706',
   },
   inviteIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: THEME.colors.surface,
     borderWidth: 1,
     borderColor: THEME.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
-    ...THEME.shadows.card,
   },
   inviteIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
-  balanceCard: {
-    padding: THEME.spacing.lg,
-    marginBottom: 20,
+  compactWalletCard: {
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 10,
   },
-  cardHeader: {
+  walletMainRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  balanceLabel: {
-    fontSize: 12,
-    color: THEME.colors.textSecondary,
-    textTransform: 'uppercase',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  balanceAmount: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: THEME.colors.emerald,
-    marginTop: 4,
-    letterSpacing: 0.5,
-  },
-  rankBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  balanceMetaRow: {
-    flexDirection: 'row',
-    backgroundColor: THEME.colors.surfaceSubtle,
-    borderRadius: THEME.borderRadius.md,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-  },
-  metaCol: {
+  balanceInfoCol: {
     flex: 1,
+  },
+  walletLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  walletAmount: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#064E3B',
+    marginTop: 1,
+  },
+  walletActionCol: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  withdrawQuickBtn: {
+    backgroundColor: THEME.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  withdrawQuickBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  rankBadgeCompact: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  walletStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    fontWeight: '600',
+  },
+  statValuePositive: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  statValueGold: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  statValue: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  statDot: {
+    fontSize: 10,
+    color: '#9CA3AF',
+  },
+  activitySectionHeader: {
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  activitySectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  activitySectionSubtitle: {
+    fontSize: 11,
+    color: THEME.colors.textSecondary,
+    marginTop: 1,
+  },
+  activityGrid: {
+    gap: 10,
+    marginBottom: 14,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  activityCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(229, 9, 20, 0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1.5,
+  },
+  activityIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  metaDivider: {
-    width: 1,
-    height: '100%',
-    backgroundColor: THEME.colors.border,
+  activityIcon: {
+    fontSize: 20,
   },
-  metaLabel: {
-    fontSize: 10,
-    color: THEME.colors.textMuted,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+  activityTextBox: {
+    flex: 1,
   },
-  metaValuePositive: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: THEME.colors.emerald,
-    marginTop: 2,
-  },
-  metaValue: {
+  activityTitle: {
     fontSize: 13,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
-    marginTop: 2,
   },
-  metaValueGold: {
+  activitySubtitle: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 1,
+  },
+  rankClubCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 14,
+  },
+  rankClubLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  rankClubIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rankClubEmoji: {
+    fontSize: 20,
+  },
+  rankClubTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rankClubTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: THEME.colors.gold,
-    marginTop: 2,
+    color: '#92400E',
   },
-  actionBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
+  rankClubSubtitle: {
+    fontSize: 10,
+    color: '#B45309',
+    marginTop: 1,
   },
-  withdrawBtn: {
-    flex: 1,
-  },
-  inviteBtn: {
-    flex: 1,
+  rankClubArrow: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#D97706',
+    marginLeft: 6,
   },
   networkCard: {
-    marginBottom: 16,
-    padding: THEME.spacing.md,
+    padding: 14,
+    marginBottom: 14,
+    borderRadius: 14,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 14,
@@ -521,68 +678,64 @@ const styles = StyleSheet.create({
     color: THEME.colors.textPrimary,
   },
   viewMoreText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
     color: THEME.colors.primary,
+    fontWeight: '700',
   },
   networkGridRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-around',
     backgroundColor: THEME.colors.surfaceSubtle,
-    borderRadius: THEME.borderRadius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
+    borderRadius: 10,
+    paddingVertical: 10,
   },
   networkMetricBox: {
-    flex: 1,
     alignItems: 'center',
+    flex: 1,
   },
   networkMetricValue: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: '900',
-    color: THEME.colors.emerald,
+    color: THEME.colors.textPrimary,
   },
   networkMetricLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: THEME.colors.textSecondary,
-    fontWeight: '600',
     marginTop: 2,
+    fontWeight: '600',
   },
   networkMetricDivider: {
     width: 1,
-    height: 36,
+    height: 28,
     backgroundColor: THEME.colors.border,
   },
   breakdownCard: {
-    marginBottom: 24,
-    padding: THEME.spacing.md,
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 14,
   },
   sourceGrid: {
-    marginTop: 12,
-    gap: 10,
+    marginTop: 8,
+    gap: 8,
   },
   sourceItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.colors.surfaceSubtle,
-    padding: 10,
-    borderRadius: THEME.borderRadius.md,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
+    justifyContent: 'space-between',
+    paddingVertical: 4,
   },
   sourceIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: THEME.colors.surface,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: THEME.colors.surfaceSubtle,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 8,
   },
   sourceEmoji: {
-    fontSize: 18,
+    fontSize: 14,
   },
   sourceInfo: {
     flex: 1,
@@ -591,77 +744,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sourceName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: THEME.colors.textSecondary,
+    color: THEME.colors.textPrimary,
   },
   sourceAmount: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: THEME.colors.textPrimary,
-    marginBottom: 12,
-    letterSpacing: 0.3,
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  gridAction: {
-    width: '30.5%',
-    backgroundColor: THEME.colors.surface,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    borderRadius: THEME.borderRadius.lg,
-    paddingVertical: 14,
-    alignItems: 'center',
-    ...THEME.shadows.card,
-  },
-  gridIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  gridEmoji: {
-    fontSize: 22,
-  },
-  gridLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-    textAlign: 'center',
-  },
-  offersBannerCard: {
-    marginBottom: 16,
-    padding: 16,
-    backgroundColor: 'rgba(220, 38, 38, 0.04)',
-    borderColor: 'rgba(220, 38, 38, 0.18)',
-  },
-  offersBannerSub: {
-    fontSize: 12,
-    color: THEME.colors.textSecondary,
-    lineHeight: 17,
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  browseOffersBtn: {
-    backgroundColor: THEME.colors.primary,
-    height: 38,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  browseOffersBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
 });

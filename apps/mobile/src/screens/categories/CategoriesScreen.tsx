@@ -14,7 +14,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Search,
@@ -33,12 +33,13 @@ import { THEME } from '../../constants/theme';
 import { useBottomTabSpacing } from '../../hooks/useBottomTabSpacing';
 import { getCategoriesApi } from '../../services/api/category.api';
 import { getOffersApi, generateOfferShareLinkApi } from '../../services/api/offer.api';
-import { RootStackParamList } from '../../navigation/types';
+import { RootStackParamList, MainTabParamList } from '../../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const CategoriesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<RouteProp<MainTabParamList, 'Categories'>>();
   const bottomSpacing = useBottomTabSpacing();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -72,6 +73,13 @@ export const CategoriesScreen: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Pre-select category if routed from banner or external link
+  useEffect(() => {
+    if (route.params?.categoryId) {
+      setSelectedCategoryId(route.params.categoryId);
+    }
+  }, [route.params?.categoryId]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -253,76 +261,117 @@ export const CategoriesScreen: React.FC = () => {
               const isSharing = sharingOfferId === offer.id;
 
               return (
-                <Card key={offer.id} variant="default" style={styles.offerCard}>
-                  {/* Banner Image if present */}
-                  {offer.bannerUrl ? (
-                    <View style={styles.bannerContainer}>
-                      <Image
-                        source={{ uri: offer.bannerUrl }}
-                        style={styles.bannerImage}
-                        resizeMode="cover"
-                      />
-                    </View>
-                  ) : null}
+                <TouchableOpacity
+                  key={offer.id}
+                  activeOpacity={0.92}
+                  onPress={() =>
+                    navigation.navigate('OfferDetails', { offerId: offer.id, slug: offer.slug })
+                  }
+                  style={styles.offerCardWrapper}
+                >
+                  <Card variant="default" style={styles.offerCard}>
+                    {/* Banner Image if present */}
+                    {offer.bannerUrl ? (
+                      <View style={styles.bannerContainer}>
+                        <Image
+                          source={{ uri: offer.bannerUrl }}
+                          style={styles.bannerImage}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    ) : null}
 
-                  <View style={styles.cardContent}>
-                    {/* Top Row: Category & Reward */}
-                    <View style={styles.topRow}>
-                      <View style={styles.catBadge}>
-                        <Tag size={12} color={THEME.colors.primary} style={{ marginRight: 4 }} />
-                        <Text style={styles.catBadgeText}>{catName}</Text>
+                    <View style={styles.cardContent}>
+                      {/* Top Row: Category & Reward */}
+                      <View style={styles.topRow}>
+                        <View style={styles.catBadge}>
+                          <Tag size={12} color={THEME.colors.primary} style={{ marginRight: 4 }} />
+                          <Text style={styles.catBadgeText}>{catName}</Text>
+                        </View>
+
+                        <View style={styles.rewardBadge}>
+                          <Coins size={14} color="#D97706" style={{ marginRight: 4 }} />
+                          <Text style={styles.rewardPoints}>
+                            {offer.rewardPoints.toLocaleString()} pts
+                          </Text>
+                          <Text style={styles.rewardRupees}>(${usdValue} USD)</Text>
+                        </View>
                       </View>
 
-                      <View style={styles.rewardBadge}>
-                        <Coins size={14} color="#D97706" style={{ marginRight: 4 }} />
-                        <Text style={styles.rewardPoints}>
-                          {offer.rewardPoints.toLocaleString()} pts
-                        </Text>
-                        <Text style={styles.rewardRupees}>(${usdValue})</Text>
-                      </View>
-                    </View>
-
-                    {/* Title & Description */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      {!!offer.content?.logoUrl && <Image source={{ uri: offer.content.logoUrl }} style={{ width: 44, height: 44, borderRadius: 8 }} resizeMode="contain" />}
-                      <Text style={[styles.offerTitle, { flex: 1 }]}>{offer.title}</Text>
-                    </View>
-                    <Text numberOfLines={2} style={styles.offerDesc}>
-                      {offer.description}
-                    </Text>
-
-                    {offer.content?.benefits?.slice(0, 3).map((benefit, i) => <Text key={i} style={styles.offerDesc}>✓ {benefit}</Text>)}
-                    {/* Actions Row */}
-                    <View style={styles.actionsRow}>
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() => handleShareOffer(offer)}
-                        disabled={isSharing}
-                        style={styles.shareBtn}
-                      >
-                        {isSharing ? (
-                          <ActivityIndicator size="small" color={THEME.colors.primary} />
+                      {/* Header Row: Logo & Title */}
+                      <View style={styles.offerHeaderRow}>
+                        {offer.content?.logoUrl ? (
+                          <Image
+                            source={{ uri: offer.content.logoUrl }}
+                            style={styles.offerLogo}
+                            resizeMode="contain"
+                          />
                         ) : (
-                          <>
-                            <Share2 size={16} color={THEME.colors.primary} />
-                            <Text style={styles.shareBtnText}>Share & Refer</Text>
-                          </>
+                          <View style={styles.offerLogoPlaceholder}>
+                            <Gift size={20} color={THEME.colors.primary} />
+                          </View>
                         )}
-                      </TouchableOpacity>
+                        <View style={styles.offerHeaderInfo}>
+                          <Text style={styles.offerTitle} numberOfLines={2}>
+                            {offer.title}
+                          </Text>
+                          {!!offer.description && (
+                            <Text numberOfLines={2} style={styles.offerDesc}>
+                              {offer.description}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
 
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() =>
-                          navigation.navigate('OfferDetails', { offerId: offer.id, slug: offer.slug })
-                        }
-                        style={styles.detailsBtn}
-                      >
-                        <Text style={styles.detailsBtnText}>View Details</Text>
-                        <ChevronRight size={16} color="#FFFFFF" />
-                      </TouchableOpacity>
+                      {/* Benefits Checklist (BankSathi reference) */}
+                      {offer.content?.benefits && offer.content.benefits.length > 0 && (
+                        <View style={styles.benefitsContainer}>
+                          {offer.content.benefits.slice(0, 3).map((benefit, i) => (
+                            <View key={i} style={styles.benefitRow}>
+                              <Text style={styles.benefitCheck}>✓</Text>
+                              <Text numberOfLines={1} style={styles.benefitText}>
+                                {benefit}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Actions Row */}
+                      <View style={styles.actionsRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            handleShareOffer(offer);
+                          }}
+                          disabled={isSharing}
+                          style={styles.shareBtn}
+                        >
+                          {isSharing ? (
+                            <ActivityIndicator size="small" color={THEME.colors.primary} />
+                          ) : (
+                            <>
+                              <Share2 size={16} color={THEME.colors.primary} />
+                              <Text style={styles.shareBtnText}>Share & Refer</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            navigation.navigate('OfferDetails', { offerId: offer.id, slug: offer.slug })
+                          }
+                          style={styles.detailsBtn}
+                        >
+                          <Text style={styles.detailsBtnText}>View Details</Text>
+                          <ChevronRight size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
-                </Card>
+                  </Card>
+                </TouchableOpacity>
               );
             })
           )}
@@ -434,14 +483,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: THEME.colors.textMuted,
   },
+  offerCardWrapper: {
+    marginBottom: 12,
+  },
   offerCard: {
     padding: 0,
-    marginBottom: 14,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   bannerContainer: {
+    height: 120,
     width: '100%',
-    height: 140,
+    overflow: 'hidden',
     backgroundColor: THEME.colors.surfaceSubtle,
   },
   bannerImage: {
@@ -455,7 +508,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   catBadge: {
     flexDirection: 'row',
@@ -489,17 +542,61 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#065F46',
   },
+  offerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 8,
+  },
+  offerLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  offerLogoPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offerHeaderInfo: {
+    flex: 1,
+  },
   offerTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   offerDesc: {
-    fontSize: 13,
+    fontSize: 12,
     color: THEME.colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: 12,
+    lineHeight: 16,
+  },
+  benefitsContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 8,
+    marginVertical: 8,
+    gap: 4,
+  },
+  benefitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  benefitCheck: {
+    color: '#059669',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  benefitText: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    flex: 1,
   },
   actionsRow: {
     flexDirection: 'row',

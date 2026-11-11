@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -11,26 +12,45 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { VideoContentItem, formatUsd } from '@adpayon/shared';
+import { formatUsd } from '@adpayon/shared';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Header } from '../../components/ui/Header';
+import { Modal } from '../../components/ui/Modal';
+import { ProofImagePicker } from '../../components/ui/ProofImagePicker';
 import { THEME } from '../../constants/theme';
-import { getPublishedVideosApi } from '../../services/api/features.api';
+import { getTaskFeedApi, submitTaskProofApi, TaskFeedItem } from '../../services/api/task.api';
 
 export const VideoWallScreen: React.FC = () => {
-  const [videos, setVideos] = useState<VideoContentItem[]>([]);
+  const [tasks, setTasks] = useState<TaskFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
 
-  const categories = ['ALL', 'Learning', 'Product', 'Tutorial', 'Entertainment'];
+  // Proof submission modal state
+  const [activeTask, setActiveTask] = useState<TaskFeedItem | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [proofFileId, setProofFileId] = useState('');
+  const [proofUrl, setProofUrl] = useState('');
+  const [proofNotes, setProofNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadVideos = async () => {
+  const loadVideoTasks = async () => {
     try {
-      const data = await getPublishedVideosApi(selectedCategory);
-      setVideos(data);
+      const res = await getTaskFeedApi();
+      if (res.success && res.data?.tasks) {
+        const videoTasks = res.data.tasks.filter(
+          (t: any) =>
+            t.category === 'VIDEO_WATCH' ||
+            t.category === 'YOUTUBE_LEARNING' ||
+            t.category === 'VIDEO' ||
+            (t.title && t.title.toLowerCase().includes('video')) ||
+            (t.instructions && t.instructions.toLowerCase().includes('video'))
+        );
+        setTasks(videoTasks);
+      }
     } catch (err: any) {
-      console.error('Failed to load videos', err);
+      console.error('Failed to load video tasks:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -38,64 +58,79 @@ export const VideoWallScreen: React.FC = () => {
   };
 
   useEffect(() => {
-    loadVideos();
-  }, [selectedCategory]);
+    loadVideoTasks();
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadVideos();
+    loadVideoTasks();
   };
 
-  const handleOpenVideo = (video: VideoContentItem) => {
-    if (video.videoUrl) {
-      Linking.openURL(video.videoUrl).catch(() => {});
+  const handleDirectWatch = (task: TaskFeedItem) => {
+    const targetUrl =
+      task.externalActionUrl ||
+      task.videoWatchConfig?.videoUrl ||
+      (task as any).youtubeLearningConfig?.youtubeUrl ||
+      'https://www.youtube.com';
+
+    Linking.openURL(targetUrl).catch(() => {
+      Alert.alert('Cannot Open Video', 'Unable to launch target video URL. Please check your connection.');
+    });
+  };
+
+  const handleOpenProofModal = (task: TaskFeedItem) => {
+    setActiveTask(task);
+    setProofFileId('');
+    setProofUrl(task.userSubmission?.proofUrl || '');
+    setProofNotes(task.userSubmission?.notes || '');
+    setIsModalVisible(true);
+  };
+
+  const handleSubmitProof = async () => {
+    if (!activeTask) return;
+    if (!proofFileId && !proofUrl) {
+      Alert.alert('Screenshot Required', 'Please attach a screenshot proof before submitting.');
+      return;
     }
-  };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    setIsSubmitting(true);
+    try {
+      const res = await submitTaskProofApi(activeTask.id, {
+        proofFileId,
+        proofUrl,
+        notes: proofNotes.trim() || undefined,
+      });
+
+      if (res.success) {
+        setIsModalVisible(false);
+        setActiveTask(null);
+        setProofFileId('');
+        setProofUrl('');
+        setProofNotes('');
+        await loadVideoTasks();
+        Alert.alert(
+          'Submitted for Admin Review',
+          `Your video watch screenshot has been submitted. +${activeTask.rewardPoints} PTS (${formatUsd(activeTask.rewardPoints * 0.001)} USD) will be credited upon approval.`
+        );
+      } else {
+        throw new Error(res.data?.message || 'Submission failed');
+      }
+    } catch (err: any) {
+      Alert.alert('Submission Error', err.message || 'Failed to submit proof. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Header
         title="Video Wall"
-        subtitle="Watch educational partner presentations and task tutorials"
+        subtitle="Watch partner videos & submit screenshot proof to earn rewards"
       />
 
-      <View style={styles.categoryBar}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={categories}
-          keyExtractor={(item) => item}
-          contentContainerStyle={styles.categoryList}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setSelectedCategory(item)}
-              style={[
-                styles.categoryChip,
-                selectedCategory === item && styles.categoryChipActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.categoryText,
-                  selectedCategory === item && styles.categoryTextActive,
-                ]}
-              >
-                {item}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
-
       <FlatList
-        data={videos}
+        data={tasks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshControl={
@@ -105,66 +140,147 @@ export const VideoWallScreen: React.FC = () => {
             tintColor={THEME.colors.primary}
           />
         }
+        ListHeaderComponent={
+          <View style={styles.bannerNotice}>
+            <Text style={styles.bannerNoticeText}>
+              🎬 Watch the full video, capture your completion screenshot, and tap "Submit Proof" for manual review approval.
+            </Text>
+          </View>
+        }
         ListEmptyComponent={
           loading ? (
             <View style={styles.loaderBox}>
               <ActivityIndicator size="large" color={THEME.colors.primary} />
-              <Text style={styles.loaderText}>Loading published videos...</Text>
+              <Text style={styles.loaderText}>Loading video tasks...</Text>
             </View>
           ) : (
             <View style={styles.emptyBox}>
               <Text style={styles.emptyEmoji}>🎬</Text>
-              <Text style={styles.emptyTitle}>No Videos Available</Text>
-              <Text style={styles.emptyDesc}>Check back soon for new video streams.</Text>
+              <Text style={styles.emptyTitle}>No Video Tasks Available</Text>
+              <Text style={styles.emptyDesc}>All active video campaigns have been completed. Check back soon!</Text>
             </View>
           )
         }
-        renderItem={({ item }) => (
-          <Card variant="default" style={styles.videoCard}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => handleOpenVideo(item)}
-              style={styles.thumbnailWrapper}
-            >
-              <Image
-                source={{ uri: item.thumbnailUrl }}
-                style={styles.thumbnail}
-                resizeMode="cover"
-              />
-              <View style={styles.playIconOverlay}>
-                <Text style={styles.playIcon}>▶</Text>
-              </View>
-              <View style={styles.durationBadge}>
-                <Text style={styles.durationText}>{formatDuration(item.durationSeconds)}</Text>
-              </View>
-              <View style={styles.badgeTopLeft}>
-                <Text
-                  style={[
-                    styles.tagText,
-                    item.isRewardBearing ? styles.tagReward : styles.tagInfo,
-                  ]}
-                >
-                  {item.isRewardBearing
-                    ? `${item.rewardPoints} PTS (${formatUsd(item.usdValue)})`
-                    : 'INFO'}
-                </Text>
-              </View>
-            </TouchableOpacity>
+        renderItem={({ item }) => {
+          const subStatus = item.userSubmission?.status;
+          const rejectionReason = item.userSubmission?.rejectionReason;
 
-            <View style={styles.videoInfo}>
-              <Text style={styles.categoryLabel}>{item.category}</Text>
-              <Text style={styles.videoTitle} numberOfLines={2}>
-                {item.title}
+          return (
+            <Card variant="default" style={styles.taskCard}>
+              <View style={styles.cardHeader}>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>🎬 VIDEO REWARD</Text>
+                </View>
+                <View style={styles.rewardChip}>
+                  <Text style={styles.rewardPointsText}>+{item.rewardPoints} PTS</Text>
+                  <Text style={styles.rewardUsdText}>({formatUsd(item.rewardPoints * 0.001)})</Text>
+                </View>
+              </View>
+
+              <Text style={styles.taskTitle}>{item.title}</Text>
+              <Text style={styles.taskDesc} numberOfLines={2}>
+                {item.description || item.instructions || 'Watch the video and upload proof.'}
               </Text>
-              {item.instructions && item.instructions.length > 0 && (
-                <Text style={styles.instructionSnippet} numberOfLines={1}>
-                  • {item.instructions[0]}
-                </Text>
-              )}
-            </View>
-          </Card>
-        )}
+
+              {/* Rejection Notice Banner */}
+              {subStatus === 'REJECTED' && rejectionReason ? (
+                <View style={styles.rejectionNoticeCard}>
+                  <Text style={styles.rejectionNoticeTitle}>⚠️ Submission Rejected by Reviewer</Text>
+                  <Text style={styles.rejectionNoticeText}>
+                    {rejectionReason}. Tap "Resubmit Proof" to upload a corrected capture.
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Dual Action Row: Watch button (direct URL) vs Submit Proof button */}
+              <View style={styles.dualActionRow}>
+                <Button
+                  title={`Watch (+${item.rewardPoints}) ↗️`}
+                  variant="primary"
+                  size="sm"
+                  onPress={() => handleDirectWatch(item)}
+                  style={styles.actionBtn}
+                />
+                <Button
+                  title={
+                    subStatus === 'PENDING_REVIEW'
+                      ? 'Under Review ⏳'
+                      : subStatus === 'REJECTED'
+                      ? 'Resubmit Proof ⚠️'
+                      : subStatus === 'VERIFIED'
+                      ? 'Completed ✅'
+                      : 'Submit Proof 📤'
+                  }
+                  disabled={subStatus === 'VERIFIED'}
+                  variant={
+                    subStatus === 'REJECTED'
+                      ? 'danger'
+                      : subStatus === 'PENDING_REVIEW'
+                      ? 'secondary'
+                      : 'outline'
+                  }
+                  size="sm"
+                  onPress={() => handleOpenProofModal(item)}
+                  style={styles.actionBtn}
+                />
+              </View>
+            </Card>
+          );
+        }}
       />
+
+      {/* Proof Submission Modal */}
+      <Modal
+        visible={isModalVisible}
+        onClose={() => {
+          if (!isSubmitting) {
+            setIsModalVisible(false);
+            setActiveTask(null);
+          }
+        }}
+        title={activeTask?.title || 'Submit Screenshot Proof'}
+      >
+        {activeTask && (
+          <View style={styles.modalContent}>
+            {activeTask.userSubmission?.status === 'REJECTED' && (
+              <View style={styles.rejectionNoticeCard}>
+                <Text style={styles.rejectionNoticeTitle}>⚠️ Previous Submission Rejected</Text>
+                <Text style={styles.rejectionNoticeText}>
+                  Reason: {activeTask.userSubmission.rejectionReason}. Please upload a clear screenshot showing full watch time.
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.modalInstructions}>
+              {activeTask.instructions || '1. Watch the video.\n2. Take a screenshot.\n3. Upload your proof below.'}
+            </Text>
+
+            <ProofImagePicker
+              onProofUploaded={(proof) => {
+                setProofFileId(proof?.fileId || '');
+                setProofUrl(proof?.url || '');
+              }}
+              label="Attach Video Screenshot *"
+              helperText="Upload clear JPEG or PNG capture showing completed video watch duration."
+              initialProofUrl={proofUrl || activeTask.userSubmission?.proofUrl}
+            />
+
+            <Button
+              title={
+                isSubmitting
+                  ? 'Submitting Proof...'
+                  : `Submit Proof for Admin Review (+${activeTask.rewardPoints} PTS)`
+              }
+              onPress={handleSubmitProof}
+              variant="primary"
+              size="lg"
+              disabled={isSubmitting || (!proofFileId && !proofUrl)}
+              isLoading={isSubmitting}
+              style={{ marginTop: 16 }}
+            />
+          </View>
+        )}
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -174,38 +290,108 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: THEME.colors.background,
   },
-  categoryBar: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
+  list: {
+    padding: THEME.spacing.lg,
+    paddingBottom: 40,
+    gap: 12,
   },
-  categoryList: {
-    paddingHorizontal: THEME.spacing.lg,
-    gap: 8,
-  },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: THEME.colors.surface,
+  bannerNotice: {
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
     borderWidth: 1,
-    borderColor: THEME.colors.border,
+    borderColor: 'rgba(59, 130, 246, 0.25)',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
   },
-  categoryChipActive: {
-    backgroundColor: THEME.colors.primary,
-    borderColor: THEME.colors.primary,
-  },
-  categoryText: {
+  bannerNoticeText: {
     fontSize: 12,
+    color: '#1E40AF',
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  taskCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(229, 9, 20, 0.12)',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  categoryBadge: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  rewardChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: THEME.colors.goldGlow,
+    borderWidth: 1,
+    borderColor: THEME.colors.goldDark,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  rewardPointsText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: THEME.colors.goldLight,
+  },
+  rewardUsdText: {
+    fontSize: 10,
     fontWeight: '700',
     color: THEME.colors.textSecondary,
   },
-  categoryTextActive: {
-    color: '#FFF',
+  taskTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: 4,
   },
-  list: {
-    padding: THEME.spacing.lg,
-    gap: 16,
+  taskDesc: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  rejectionNoticeCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 1,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  rejectionNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.danger,
+    marginBottom: 2,
+  },
+  rejectionNoticeText: {
+    fontSize: 11,
+    color: THEME.colors.danger,
+    lineHeight: 15,
+  },
+  dualActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  actionBtn: {
+    flex: 1,
   },
   loaderBox: {
     padding: 40,
@@ -221,7 +407,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyEmoji: {
-    fontSize: 40,
+    fontSize: 38,
     marginBottom: 8,
   },
   emptyTitle: {
@@ -232,98 +418,16 @@ const styles = StyleSheet.create({
   emptyDesc: {
     fontSize: 12,
     color: THEME.colors.textSecondary,
+    textAlign: 'center',
     marginTop: 4,
   },
-  videoCard: {
-    overflow: 'hidden',
-    padding: 0,
+  modalContent: {
+    paddingVertical: 10,
   },
-  thumbnailWrapper: {
-    width: '100%',
-    height: 170,
-    position: 'relative',
-    backgroundColor: '#000',
-  },
-  thumbnail: {
-    width: '100%',
-    height: '100%',
-  },
-  playIconOverlay: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginTop: -22,
-    marginLeft: -22,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playIcon: {
-    color: '#FFF',
-    fontSize: 18,
-    marginLeft: 3,
-  },
-  durationBadge: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  durationText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-  },
-  badgeTopLeft: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-  },
-  tagText: {
-    fontSize: 10,
-    fontWeight: '800',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    overflow: 'hidden',
-    textTransform: 'uppercase',
-  },
-  tagReward: {
-    backgroundColor: 'rgba(217, 119, 6, 0.9)',
-    color: '#FFF',
-  },
-  tagInfo: {
-    backgroundColor: 'rgba(59, 130, 246, 0.85)',
-    color: '#FFF',
-  },
-  videoInfo: {
-    padding: 14,
-  },
-  categoryLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: THEME.colors.primary,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  videoTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: THEME.colors.textPrimary,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  instructionSnippet: {
-    fontSize: 11,
+  modalInstructions: {
+    fontSize: 13,
     color: THEME.colors.textSecondary,
-    lineHeight: 16,
+    lineHeight: 18,
+    marginBottom: 12,
   },
 });
-

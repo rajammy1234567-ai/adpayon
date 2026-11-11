@@ -6,8 +6,10 @@ interface Banner {
   id: string;
   title: string;
   imageUrl: string;
-  destinationUrl: string;
+  destinationUrl?: string;
   sponsorName: string;
+  ctaText?: string;
+  targetCategory?: string;
   active: boolean;
   displayOrder: number;
   clicksCount: number;
@@ -16,6 +18,7 @@ interface Banner {
 
 export const BannersManagement: React.FC = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -26,6 +29,8 @@ export const BannersManagement: React.FC = () => {
   const [imageUrl, setImageUrl] = useState('');
   const [destinationUrl, setDestinationUrl] = useState('');
   const [sponsorName, setSponsorName] = useState('');
+  const [ctaText, setCtaText] = useState('Explore');
+  const [targetCategory, setTargetCategory] = useState('ALL');
   const [displayOrder, setDisplayOrder] = useState('0');
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -45,6 +50,11 @@ export const BannersManagement: React.FC = () => {
 
   useEffect(() => {
     fetchBanners();
+    api.listCategories().then((res: any) => {
+      if (res?.data && Array.isArray(res.data)) {
+        setCategories(res.data);
+      }
+    }).catch(() => {});
   }, []);
 
   const handleOpenCreate = () => {
@@ -53,6 +63,8 @@ export const BannersManagement: React.FC = () => {
     setImageUrl('');
     setDestinationUrl('');
     setSponsorName('AdPayOn Partner');
+    setCtaText('Explore');
+    setTargetCategory('ALL');
     setDisplayOrder('0');
     setActive(true);
     setModalOpen(true);
@@ -62,8 +74,10 @@ export const BannersManagement: React.FC = () => {
     setEditingBanner(b);
     setTitle(b.title);
     setImageUrl(b.imageUrl);
-    setDestinationUrl(b.destinationUrl);
+    setDestinationUrl(b.destinationUrl || '');
     setSponsorName(b.sponsorName);
+    setCtaText(b.ctaText || 'Explore');
+    setTargetCategory(b.targetCategory || 'ALL');
     setDisplayOrder(b.displayOrder.toString());
     setActive(b.active);
     setModalOpen(true);
@@ -76,8 +90,10 @@ export const BannersManagement: React.FC = () => {
       const payload = {
         title,
         imageUrl,
-        destinationUrl,
+        destinationUrl: destinationUrl || '',
         sponsorName,
+        ctaText: ctaText || 'Explore',
+        targetCategory: targetCategory || 'ALL',
         displayOrder: Number(displayOrder),
         active,
       };
@@ -152,14 +168,24 @@ export const BannersManagement: React.FC = () => {
               <div className="p-4 flex-1 flex flex-col justify-between">
                 <div>
                   <h3 className="font-bold text-white text-base truncate">{b.title}</h3>
-                  <a
-                    href={b.destinationUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:underline mt-1 truncate max-w-full"
-                  >
-                    <ExternalLink className="w-3 h-3" /> {b.destinationUrl}
-                  </a>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[11px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-medium">
+                      🎯 {categories.find((c) => c.id === b.targetCategory || c.slug === b.targetCategory)?.name || (b.targetCategory === 'ALL' || !b.targetCategory ? 'All Offers' : b.targetCategory)}
+                    </span>
+                    <span className="text-[11px] bg-obsidian-800 text-slate-300 px-2 py-0.5 rounded">
+                      CTA: {b.ctaText || 'Explore'} ↗
+                    </span>
+                  </div>
+                  {b.destinationUrl ? (
+                    <a
+                      href={b.destinationUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 hover:underline mt-2 truncate max-w-full"
+                    >
+                      <ExternalLink className="w-3 h-3" /> {b.destinationUrl}
+                    </a>
+                  ) : null}
                   <div className="mt-3 text-xs text-slate-400 flex items-center justify-between border-t border-obsidian-800 pt-2">
                     <span>Order: #{b.displayOrder}</span>
                     <span>Clicks: {b.clicksCount || 0}</span>
@@ -218,15 +244,43 @@ export const BannersManagement: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Linked Category (Opens In-App)</label>
+                  <select
+                    value={targetCategory}
+                    onChange={(e) => setTargetCategory(e.target.value)}
+                    className="w-full bg-obsidian-950 border border-obsidian-700 rounded-lg px-3 py-2 text-white text-sm"
+                  >
+                    <option value="ALL">🎯 All Offers (Task Hub)</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.slug})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">CTA Button Text</label>
+                  <input
+                    type="text"
+                    required
+                    value={ctaText}
+                    onChange={(e) => setCtaText(e.target.value)}
+                    className="w-full bg-obsidian-950 border border-obsidian-700 rounded-lg px-3 py-2 text-white text-sm"
+                    placeholder="e.g. Explore, Apply Now"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Destination URL / Route</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Fallback External URL (Optional)</label>
                 <input
                   type="text"
-                  required
                   value={destinationUrl}
                   onChange={(e) => setDestinationUrl(e.target.value)}
                   className="w-full bg-obsidian-950 border border-obsidian-700 rounded-lg px-3 py-2 text-white text-sm"
-                  placeholder="https://partner.com or /offers"
+                  placeholder="https://partner.com (optional)"
                 />
               </div>
 

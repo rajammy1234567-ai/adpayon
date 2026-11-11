@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -35,6 +36,7 @@ import {
   getTaskStatusApi,
   startTaskApi,
   verifyTaskActionApi,
+  submitTaskProofApi,
   heartbeatTaskApi,
   EngagementInterval,
   TaskAssignmentResponse,
@@ -43,6 +45,7 @@ import {
   TaskHistoryPagination,
   TaskSummaryData,
 } from '../../services/api/task.api';
+import { ProofImagePicker } from '../../components/ui/ProofImagePicker';
 import { useDemoStore } from '../../store/demoStore';
 
 
@@ -77,6 +80,12 @@ export const EarnHubScreen: React.FC = () => {
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [remainingDwellSeconds, setRemainingDwellSeconds] = useState(0);
+
+  // Manual Proof Submission State
+  const [proofFileId, setProofFileId] = useState('');
+  const [proofUrl, setProofUrl] = useState('');
+  const [proofNotes, setProofNotes] = useState('');
+  const [isSubmittingProof, setIsSubmittingProof] = useState(false);
 
   // Foreground engagement tracking (Phase 7H)
   const [isTimerPaused, setIsTimerPaused] = useState(false);
@@ -269,10 +278,105 @@ export const EarnHubScreen: React.FC = () => {
     return () => clearInterval(timer);
   }, [isTaskModalVisible, remainingDwellSeconds, isTimerPaused, appStateStatus]);
 
+  const handleSubmitProof = async () => {
+    if (!activeTask) return;
+    if (!proofFileId && !proofUrl) {
+      Alert.alert('Screenshot Required', 'Please upload a screenshot proof of completion before submitting.');
+      return;
+    }
+
+    setIsSubmittingProof(true);
+    try {
+      const res = await submitTaskProofApi(activeTask.id, {
+        proofFileId,
+        proofUrl,
+        notes: proofNotes.trim() || undefined,
+      });
+
+      if (res.success) {
+        setIsTaskModalVisible(false);
+        setActiveTask(null);
+        setProofFileId('');
+        setProofUrl('');
+        setProofNotes('');
+        await refreshAll(false);
+        Alert.alert(
+          'Submitted for Admin Review',
+          'Your proof has been submitted for review. Points will be credited once verified by an administrator.'
+        );
+      } else {
+        throw new Error(res.data?.message || 'Submission failed');
+      }
+    } catch (err: any) {
+      Alert.alert('Submission Error', err.message || 'Failed to submit proof. Please try again.');
+    } finally {
+      setIsSubmittingProof(false);
+    }
+  };
+
+  const handleDirectUrlOpen = (task: TaskFeedItem) => {
+    const isManualReview = task.verificationMethod === 'MANUAL_REVIEW';
+    const isExternalVideo =
+      task.category === 'VIDEO_WATCH' &&
+      (isManualReview || !!task.externalActionUrl || !!task.videoWatchConfig?.videoUrl);
+    const isExternalNews =
+      task.category === 'ARTICLE_READ' &&
+      (isManualReview || !!task.externalActionUrl || !!task.articleReadConfig?.sourceUrl);
+
+    const targetUrl =
+      task.externalActionUrl ||
+      (isExternalVideo ? task.videoWatchConfig?.videoUrl : undefined) ||
+      (isExternalNews ? task.articleReadConfig?.sourceUrl : undefined);
+
+    if (!targetUrl) {
+      Alert.alert('No URL Configured', 'This task does not have an external URL configured.');
+      return;
+    }
+
+    Linking.openURL(targetUrl).catch(() => {
+      Alert.alert('Cannot Open Link', 'Unable to open target URL. Please verify your connection.');
+    });
+  };
+
+  const handleOpenProofModal = (task: TaskFeedItem) => {
+    setProofFileId('');
+    setProofUrl(task.userSubmission?.proofUrl || '');
+    setProofNotes(task.userSubmission?.notes || '');
+    setActiveTask(task);
+    setIsTaskModalVisible(true);
+  };
+
   const handleStartOrResumeTask = async (task: TaskFeedItem) => {
     if (startingTaskId !== null) return; // Prevent concurrent start requests or double-tap
 
-    // 1. Authoritative resolution of specialized task navigation
+    // 1. Guard against completed/pending submissions
+    if (task.userSubmission?.status === 'PENDING_REVIEW') {
+      Alert.alert(
+        'Submission Under Review',
+        'Your screenshot proof for this task has been submitted and is awaiting administrator verification. Points will be credited once approved.'
+      );
+      return;
+    }
+    if (task.userSubmission?.status === 'VERIFIED') {
+      Alert.alert('Task Completed', 'You have already completed and claimed this task.');
+      return;
+    }
+
+    // 2. Direct external link handling for MANUAL_REVIEW tasks (External Video Tasks & News Tasks)
+    const isManualReview = task.verificationMethod === 'MANUAL_REVIEW';
+    const isExternalVideo =
+      task.category === 'VIDEO_WATCH' &&
+      (isManualReview || !!task.externalActionUrl || !!task.videoWatchConfig?.videoUrl);
+    const isExternalNews =
+      task.category === 'ARTICLE_READ' &&
+      (isManualReview || !!task.externalActionUrl || !!task.articleReadConfig?.sourceUrl);
+
+    if (isManualReview || isExternalVideo || isExternalNews) {
+      handleDirectUrlOpen(task);
+      return;
+    }
+
+    // 3. Authoritative resolution of specialized task navigation for automated telemetry
     const dest = resolveTaskNavigation(task);
     if (dest.screen === 'VideoWatchTask') {
       navigation.navigate('VideoWatchTask', dest.params);
@@ -728,17 +832,25 @@ export const EarnHubScreen: React.FC = () => {
             tasks.map((task) => {
               const cat = getCategoryBadge(task.category);
               const ver = getVerificationBadge(task.verificationMethod);
+              const isManualReview = task.verificationMethod === 'MANUAL_REVIEW';
+              const isExternalVideo =
+                task.category === 'VIDEO_WATCH' &&
+                (isManualReview || !!task.externalActionUrl || !!task.videoWatchConfig?.videoUrl);
+              const isExternalNews =
+                task.category === 'ARTICLE_READ' &&
+                (isManualReview || !!task.externalActionUrl || !!task.articleReadConfig?.sourceUrl);
+              const isExternalTask = isManualReview || isExternalVideo || isExternalNews;
 
               return (
                 <TouchableOpacity
                   key={task.id}
-                  activeOpacity={task.isEligible ? 0.85 : 1}
+                  activeOpacity={!isExternalTask && task.isEligible ? 0.85 : 1}
                   onPress={() => {
-                    if (task.isEligible) {
+                    if (!isExternalTask && task.isEligible) {
                       handleStartOrResumeTask(task);
                     }
                   }}
-                  disabled={!task.isEligible || (startingTaskId !== null && startingTaskId !== task.id)}
+                  disabled={isExternalTask || !task.isEligible || (startingTaskId !== null && startingTaskId !== task.id)}
                 >
                   <Card
                     variant={task.hasActiveAssignment ? 'emerald' : task.isEligible ? 'default' : 'glass'}
@@ -748,12 +860,18 @@ export const EarnHubScreen: React.FC = () => {
                       <View style={styles.badgesRow}>
                         <Badge label={cat.label} variant={cat.variant} />
                         <Badge label={ver.label} variant={ver.variant} />
-                        {task.hasActiveAssignment ? (
+                        {task.userSubmission?.status === 'PENDING_REVIEW' ? (
+                          <Badge label="Under Review" variant="pending" />
+                        ) : task.userSubmission?.status === 'REJECTED' ? (
+                          <Badge label="Rejected" variant="rejected" />
+                        ) : task.userSubmission?.status === 'VERIFIED' ? (
+                          <Badge label="Verified" variant="verified" />
+                        ) : task.hasActiveAssignment ? (
                           <Badge label="In Progress" variant="gold" />
                         ) : null}
                       </View>
                       <View style={styles.rewardChip}>
-                        <Text style={styles.rewardChipText}>+{task.rewardPoints} PTS (${(task.rewardPoints * 0.001).toFixed(2)})</Text>
+                        <Text style={styles.rewardChipText}>+{task.rewardPoints} PTS (${(task.rewardPoints * 0.001).toFixed(3)})</Text>
                       </View>
                     </View>
 
@@ -763,10 +881,25 @@ export const EarnHubScreen: React.FC = () => {
                       {task.description || task.instructions}
                     </Text>
 
+                    {task.userSubmission?.status === 'REJECTED' && task.userSubmission.rejectionReason ? (
+                      <View style={styles.rejectionNoticeCard}>
+                        <Text style={styles.rejectionNoticeTitle}>⚠️ Submission Rejected by Reviewer</Text>
+                        <Text style={styles.rejectionNoticeText}>
+                          {task.userSubmission.rejectionReason}. Tap below to submit a corrected screenshot.
+                        </Text>
+                      </View>
+                    ) : null}
+
                     {/* Task Meta Details */}
                     <View style={styles.taskMetaRow}>
                       <Text style={styles.metaInfoText}>
-                        {task.category === 'ARTICLE_READ'
+                        {task.verificationMethod === 'MANUAL_REVIEW'
+                          ? task.category === 'VIDEO_WATCH'
+                            ? `🎬 External Video • Watch & Upload Proof`
+                            : task.category === 'ARTICLE_READ'
+                            ? `📰 External News • Read & Upload Proof`
+                            : `📸 Manual Proof Review`
+                          : task.category === 'ARTICLE_READ'
                           ? `📖 Read & Quiz (~${Math.max(1, Math.ceil((task.articleReadConfig?.minReadDurationSeconds || task.dwellTimeSeconds || 30) / 60))} min)`
                           : task.category === 'VIDEO_WATCH'
                           ? `🎬 Watch Video (~${Math.max(1, Math.ceil((task.videoWatchConfig?.requiredWatchSeconds || 30) / 60))} min)`
@@ -786,15 +919,55 @@ export const EarnHubScreen: React.FC = () => {
 
                     {/* Action Button */}
                     <View style={styles.cardActionWrapper}>
-                      <Button
-                        title={getTaskActionButtonLabel(task)}
-                        disabled={!task.isEligible || (startingTaskId !== null && startingTaskId !== task.id)}
-                        onPress={() => handleStartOrResumeTask(task)}
-                        variant={!task.isEligible ? 'secondary' : 'primary'}
-                        size="md"
-                        isLoading={startingTaskId === task.id}
-                        style={styles.taskBtn}
-                      />
+                      {isExternalTask ? (
+                        <View style={styles.dualActionRow}>
+                          <Button
+                            title={
+                              task.category === 'VIDEO_WATCH'
+                                ? `Watch (+${task.rewardPoints}) ↗️`
+                                : task.category === 'ARTICLE_READ'
+                                ? `Read News (+${task.rewardPoints}) ↗️`
+                                : `Open Link ↗️`
+                            }
+                            variant="primary"
+                            size="sm"
+                            onPress={() => handleDirectUrlOpen(task)}
+                            style={styles.dualActionBtn}
+                          />
+                          <Button
+                            title={
+                              task.userSubmission?.status === 'PENDING_REVIEW'
+                                ? 'Under Review ⏳'
+                                : task.userSubmission?.status === 'REJECTED'
+                                ? 'Resubmit Proof ⚠️'
+                                : task.userSubmission?.status === 'VERIFIED'
+                                ? 'Completed ✅'
+                                : 'Submit Proof 📤'
+                            }
+                            disabled={task.userSubmission?.status === 'VERIFIED'}
+                            variant={
+                              task.userSubmission?.status === 'REJECTED'
+                                ? 'danger'
+                                : task.userSubmission?.status === 'PENDING_REVIEW'
+                                ? 'secondary'
+                                : 'outline'
+                            }
+                            size="sm"
+                            onPress={() => handleOpenProofModal(task)}
+                            style={styles.dualActionBtn}
+                          />
+                        </View>
+                      ) : (
+                        <Button
+                          title={getTaskActionButtonLabel(task)}
+                          disabled={!task.isEligible || (startingTaskId !== null && startingTaskId !== task.id)}
+                          onPress={() => handleStartOrResumeTask(task)}
+                          variant={!task.isEligible ? 'secondary' : 'primary'}
+                          size="md"
+                          isLoading={startingTaskId === task.id}
+                          style={styles.taskBtn}
+                        />
+                      )}
                     </View>
                   </Card>
                 </TouchableOpacity>
@@ -892,9 +1065,9 @@ export const EarnHubScreen: React.FC = () => {
 
       {/* --- IN-PROGRESS TASK EXECUTION MODAL --- */}
       <Modal
-        visible={isTaskModalVisible && isLegacyModalAllowed(activeTask?.category)}
+        visible={isTaskModalVisible && isLegacyModalAllowed(activeTask?.category, activeTask?.verificationMethod)}
         onClose={() => {
-          if (!isVerifying) {
+          if (!isVerifying && !isSubmittingProof) {
             setIsTaskModalVisible(false);
             setActiveTask(null);
             setActiveAssignment(null);
@@ -902,7 +1075,7 @@ export const EarnHubScreen: React.FC = () => {
         }}
         title={activeTask?.title || 'Active Task In Progress'}
       >
-        {activeTask && isLegacyModalAllowed(activeTask.category) ? (
+        {activeTask && isLegacyModalAllowed(activeTask.category, activeTask.verificationMethod) ? (
           <View style={styles.modalContent}>
             <View style={styles.modalBadgeRow}>
               <Badge
@@ -1006,23 +1179,108 @@ export const EarnHubScreen: React.FC = () => {
               </View>
             ) : null}
 
-            {/* MANUAL REVIEW ACTION UI */}
-            {activeTask.verificationMethod === 'MANUAL_REVIEW' ? (
-              <View style={styles.partnerContainer}>
-                <Text style={styles.partnerNotice}>
-                  Task slot assigned. Complete the required steps. An administrator will inspect and confirm your
-                  submission in the fraud review queue.
-                </Text>
-                <Button
-                  title="Close & Submit for Review"
-                  onPress={() => {
-                    setIsTaskModalVisible(false);
-                    refreshAll(false);
-                  }}
-                  variant="primary"
-                  size="lg"
-                  style={styles.modalActionBtn}
-                />
+            {/* MANUAL REVIEW (SCREENSHOT PROOF) ACTION UI */}
+            {activeTask.verificationMethod === 'MANUAL_REVIEW' ||
+            (activeTask.category === 'VIDEO_WATCH' && (activeTask.externalActionUrl || activeTask.videoWatchConfig?.videoUrl)) ||
+            (activeTask.category === 'ARTICLE_READ' && (activeTask.externalActionUrl || activeTask.articleReadConfig?.sourceUrl)) ? (
+              <View style={styles.manualReviewContainer}>
+                {/* External Action Link Button */}
+                {(() => {
+                  const targetUrl =
+                    activeTask.externalActionUrl ||
+                    (activeTask.category === 'VIDEO_WATCH' ? activeTask.videoWatchConfig?.videoUrl : undefined) ||
+                    (activeTask.category === 'ARTICLE_READ' ? activeTask.articleReadConfig?.sourceUrl : undefined);
+
+                  if (!targetUrl) return null;
+
+                  const isVideo = activeTask.category === 'VIDEO_WATCH';
+                  const isNews = activeTask.category === 'ARTICLE_READ';
+
+                  return (
+                    <View style={styles.externalLinkBox}>
+                      <Button
+                        title={
+                          isVideo
+                            ? `Watch Video Link ↗️`
+                            : isNews
+                            ? `Read News Article ↗️`
+                            : `Open Destination Link ↗️`
+                        }
+                        onPress={() => Linking.openURL(targetUrl).catch(() => {})}
+                        variant="primary"
+                        size="md"
+                        style={styles.openLinkBtn}
+                      />
+                      <Text style={styles.linkDisclaimer}>
+                        ⚠️ Opening the link alone earns 0 points. You must upload screenshot proof below after completing the action.
+                      </Text>
+                    </View>
+                  );
+                })()}
+
+                {/* Prior Rejection Banner */}
+                {activeTask.userSubmission?.status === 'REJECTED' ? (
+                  <View style={styles.rejectionNoticeCard}>
+                    <Text style={styles.rejectionNoticeTitle}>⚠️ Previous Submission Rejected</Text>
+                    <Text style={styles.rejectionNoticeText}>
+                      Reason: {activeTask.userSubmission.rejectionReason || 'Proof was not approved'}. Please upload a clear, corrected screenshot proof below.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Pending Review Notice */}
+                {activeTask.userSubmission?.status === 'PENDING_REVIEW' ? (
+                  <View style={styles.pendingNoticeCard}>
+                    <Text style={styles.pendingNoticeTitle}>⏳ Submission Pending Review</Text>
+                    <Text style={styles.pendingNoticeText}>
+                      Your screenshot proof is currently under review by our team. Points (+{activeTask.rewardPoints} PTS = ${(activeTask.rewardPoints * 0.001).toFixed(3)} USD) will be credited automatically upon approval.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Proof Image Picker */}
+                <View style={{ marginTop: 8 }}>
+                  <ProofImagePicker
+                    onProofUploaded={(proof) => {
+                      setProofFileId(proof?.fileId || '');
+                      setProofUrl(proof?.url || '');
+                    }}
+                    label="Attach Screenshot Proof *"
+                    helperText="Upload clear screenshot showing the completed task (JPEG, PNG or WebP, max 5MB)."
+                    initialProofUrl={proofUrl || activeTask.userSubmission?.proofUrl}
+                  />
+                </View>
+
+                {/* Notes Input */}
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.proofNotesLabel}>Completion Notes (Optional):</Text>
+                  <TextInput
+                    style={styles.proofNotesInput}
+                    placeholder="Enter any relevant confirmation details..."
+                    placeholderTextColor={THEME.colors.textMuted}
+                    value={proofNotes}
+                    onChangeText={setProofNotes}
+                    multiline
+                    numberOfLines={2}
+                  />
+                </View>
+
+                {/* Submit Action Button */}
+                <View style={{ marginTop: 16 }}>
+                  <Button
+                    title={
+                      activeTask.userSubmission?.status === 'REJECTED'
+                        ? 'Resubmit Corrected Proof'
+                        : `Submit Proof for Admin Review (+${activeTask.rewardPoints} PTS)`
+                    }
+                    onPress={handleSubmitProof}
+                    variant="primary"
+                    size="lg"
+                    isLoading={isSubmittingProof}
+                    disabled={isSubmittingProof || (!proofFileId && !proofUrl)}
+                    style={styles.modalActionBtn}
+                  />
+                </View>
               </View>
             ) : null}
           </View>
@@ -1240,6 +1498,15 @@ const styles = StyleSheet.create({
   taskBtn: {
     width: '100%',
   },
+  dualActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  dualActionBtn: {
+    flex: 1,
+  },
   historyCard: {
     marginBottom: 10,
     padding: THEME.spacing.md,
@@ -1443,6 +1710,78 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     fontSize: 11,
     lineHeight: 16,
+  },
+  manualReviewContainer: {
+    alignItems: 'stretch',
+  },
+  externalLinkBox: {
+    marginBottom: 12,
+  },
+  openLinkBtn: {
+    width: '100%',
+    marginBottom: 6,
+  },
+  linkDisclaimer: {
+    fontSize: 11,
+    color: THEME.colors.textMuted,
+    lineHeight: 15,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  rejectionNoticeCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: THEME.colors.danger,
+    borderRadius: THEME.borderRadius.md,
+    padding: THEME.spacing.md,
+    marginBottom: 12,
+  },
+  rejectionNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.danger,
+    marginBottom: 2,
+  },
+  rejectionNoticeText: {
+    fontSize: 11,
+    color: THEME.colors.textSecondary,
+    lineHeight: 16,
+  },
+  pendingNoticeCard: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: THEME.colors.warning,
+    borderRadius: THEME.borderRadius.md,
+    padding: THEME.spacing.md,
+    marginBottom: 12,
+  },
+  pendingNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.warning,
+    marginBottom: 2,
+  },
+  pendingNoticeText: {
+    fontSize: 11,
+    color: THEME.colors.textSecondary,
+    lineHeight: 16,
+  },
+  proofNotesLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    marginBottom: 6,
+  },
+  proofNotesInput: {
+    backgroundColor: THEME.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius.md,
+    padding: 10,
+    fontSize: 12,
+    color: THEME.colors.textPrimary,
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
 });
 

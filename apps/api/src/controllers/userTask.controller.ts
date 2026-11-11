@@ -202,8 +202,8 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
     .sort({ createdAt: -1 })
     .lean();
 
-  // 2. Fetch user's active assignments and today's completions
-  const [activeAssignments, todayCompletions] = await Promise.all([
+  // 2. Fetch user's active assignments, today's completions, and historical user submissions
+  const [activeAssignments, todayCompletions, userCompletions] = await Promise.all([
     TaskAssignment.find({
       userId: user._id,
       status: { $in: ['ASSIGNED', 'IN_PROGRESS'] },
@@ -213,6 +213,11 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
       userId: user._id,
       completedAt: { $gte: startOfToday },
     }).lean(),
+    TaskCompletion.find({
+      userId: user._id,
+    })
+      .sort({ updatedAt: -1 })
+      .lean(),
   ]);
 
   const activeTaskIdMap = new Map(activeAssignments.map((a) => [a.taskId.toString(), a]));
@@ -220,6 +225,14 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
   for (const c of todayCompletions) {
     const tId = c.taskId.toString();
     todayCompletionCounts.set(tId, (todayCompletionCounts.get(tId) || 0) + 1);
+  }
+
+  const latestUserCompletionMap = new Map<string, any>();
+  for (const c of userCompletions) {
+    const tId = c.taskId.toString();
+    if (!latestUserCompletionMap.has(tId)) {
+      latestUserCompletionMap.set(tId, c);
+    }
   }
 
   // 3. Filter and annotate tasks based on server-side eligibility checks
@@ -289,6 +302,7 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
     }
 
     const activeAssignment = activeTaskIdMap.get(t._id.toString());
+    const userCompletion = latestUserCompletionMap.get(t._id.toString());
 
     feed.push({
       id: t._id.toString(),
@@ -301,11 +315,22 @@ export async function getTaskFeed(req: AuthenticatedRequest, res: Response): Pro
       dailyCapPerUser: t.dailyCapPerUser,
       completedToday,
       dwellTimeSeconds: t.dwellTimeSeconds,
+      externalActionUrl: t.externalActionUrl,
       instructions: t.instructions,
       expiresAt: t.expiresAt,
       isEligible: eligible,
       ineligibilityReason,
       hasActiveAssignment: !!activeAssignment,
+      userSubmission: userCompletion
+        ? {
+            id: userCompletion._id.toString(),
+            status: userCompletion.status,
+            rejectionReason: userCompletion.rejectionReason,
+            proofUrl: userCompletion.proofUrl,
+            notes: userCompletion.notes,
+            completedAt: userCompletion.completedAt,
+          }
+        : null,
       activeAssignment: activeAssignment
         ? {
             id: activeAssignment._id.toString(),

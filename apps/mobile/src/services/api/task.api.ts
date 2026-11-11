@@ -44,6 +44,7 @@ export interface TaskFeedItem {
   completedToday: number;
   dwellTimeSeconds: number;
   instructions?: string;
+  externalActionUrl?: string;
   isEligible: boolean;
   ineligibilityReason?: string;
   hasActiveAssignment: boolean;
@@ -51,6 +52,14 @@ export interface TaskFeedItem {
   videoWatchConfig?: VideoWatchConfig;
   articleReadConfig?: ArticleReadConfigClient;
   expiresAt?: string;
+  userSubmission?: {
+    id: string;
+    status: 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED' | 'FLAGGED';
+    rejectionReason?: string;
+    proofUrl?: string;
+    notes?: string;
+    completedAt?: string;
+  } | null;
   activeAssignment?: {
     id: string;
     clickId: string;
